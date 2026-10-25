@@ -36,6 +36,9 @@ lock_sen = 1
 # Person Class Confidence
 confidence = 0.75
 
+# IoU threshold for non-max suppression
+iou = 0.45
+
 # What key to press to quit and shutdown the autoaim
 aaQuitKey = "P"
 

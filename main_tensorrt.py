@@ -1,267 +1,31 @@
-import ctypes
-import os
-import time
-from math import atan
+"""TensorRT entry point. Fastest path, NVIDIA only.
 
-import cupy as cp
-import numpy as np
-import pandas as pd
-import torch
-import win32api
-import win32con
+    python main_tensorrt.py --weights weights/cs2/xiaozhen.engine
+"""
 
-import gameSelection
-from config import aaQuitKey, confidence, cpsDisplay, \
-    visuals, centerOfScreen, lock_smooth, lock_sen, screenShotHeight, screenShotWidth, CT, T, aim_range
-from models.common import DetectMultiBackend
-from utils.general import (cv2, non_max_suppression, xyxy2xywh)
+import argparse
 
-# 加载罗技驱动dll文件
-try:
-    root = os.path.abspath(os.path.dirname(__file__))
-    driver = ctypes.CDLL(f'{root}/logitech.driver.dll')
-    ok = driver.device_open() == 1  # 该驱动每个进程可打开一个实例
-    if not ok:
-        print('Error, GHUB or LGS driver not found')
-except FileNotFoundError:
-    print(f'Error, DLL file not found')
+from aimbot.backends.tensorrt_backend import TensorRTDetector
+from aimbot.capture import game_selection
+from aimbot.driver import LogitechDriver
+from aimbot.loop import run
 
-
-class Logitech:
-    class mouse:
-
-        @staticmethod
-        def mouse_press(code):
-            """ 鼠标按下 code: 1左 2中 3右 """
-            if not ok:
-                return
-            driver.mouse_down(code)
-            print("按下左键")
-
-        @staticmethod
-        def mouse_up(code):
-            """ 鼠标松开 code: 左 中 右 """
-            if not ok:
-                return
-            driver.mouse_up(code)
-            print("松开左键")
-
-        @staticmethod
-        def move(x, y):
-            if not ok:
-                return
-            if x == 0 and y == 0:
-                return
-            driver.moveR(x, y, True)
+DEFAULT_WEIGHTS = 'weights/cs2/xiaozhen.engine'
 
 
 def main():
-    # External Function for running the game selection menu (gameSelection.py)
-    camera, cWidth, cHeight, region = gameSelection.gameSelection()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--weights', default=DEFAULT_WEIGHTS, help='path to a .engine file')
+    args = parser.parse_args()
 
-    # 自瞄的范围
-    center_screen = [cWidth, cHeight]
+    selected = game_selection()
+    if selected is None:
+        return
+    camera, c_width, c_height = selected
 
-    # Used for forcing garbage collection
-    count = 0
-    sTime = time.time()
-
-    # Loading Yolo5 Small AI Model
-    model = DetectMultiBackend('weights/cs2/xiaozhen.engine', device=torch.device(
-        'cuda'), dnn=False, data='', fp16=True)
-    stride, names, pt = model.stride, model.names, model.pt
-    FIRST_AIM = 0
-    with torch.no_grad():
-        while win32api.GetAsyncKeyState(ord(aaQuitKey)) == 0:
-            npImg = cp.array([camera.get_latest_frame()])
-            if npImg.shape[3] == 4:
-                # If the image has an alpha channel, remove it
-                npImg = npImg[:, :, :, :3]
-
-            """
-            获取检测到的目标数据
-            """
-            targets = detection(npImg, model)
-
-            """
-            移动鼠标
-            """
-            move_Mouse(targets, center_screen, camera)
-
-            """
-            Draw frame.
-            """
-            # See what the bot sees
-            if visuals:
-                npImg = cp.asnumpy(npImg[0])
-                # Loops over every item identified and draws a bounding box
-                for i in range(0, len(targets)):
-                    halfW = round(targets["width"][i] / 2)
-                    halfH = round(targets["height"][i] / 2)
-                    midX = targets['current_mid_x'][i]
-                    midY = targets['current_mid_y'][i]
-                    (startX, startY, endX, endY) = int(
-                        midX + halfW), int(midY + halfH), int(midX - halfW), int(midY - halfH)
-
-                    # draw the bounding box and label on the frame
-                    if targets["class"][0] in (0, 2):
-                        label = "{}: {:.2f}%".format(
-                            "Body", targets["confidence"][i] * 100)
-
-                    else:
-                        label = "{}: {:.2f}%".format(
-                            "Head", targets["confidence"][i] * 100)
-
-                    cv2.rectangle(npImg, (startX, startY), (endX, endY), (0, 255, 0), 2)
-                    y = startY - 15 if startY - 15 > 15 else startY + 15
-                    cv2.putText(npImg, label, (startX, y),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-            """
-            Forced garbage cleanup every second
-            """
-            count += 1
-            if (time.time() - sTime) > 1:
-                if cpsDisplay:
-                    print("CPS: {}".format(count))
-                count = 0
-                sTime = time.time()
-
-            # Uncomment if you keep running into memory issues
-            # gc.collect(generation=0)
-
-            # See visually what the Aimbot sees
-            if visuals:
-                cv2.imshow('Live Feed', npImg)
-                if (cv2.waitKey(1) & 0xFF) == ord('q'):
-                    exit()
-    camera.stop()
-
-
-def detection(npImg, model):
-    """
-    获取检测到目标的数据（坐标，高度）
-    Args:
-        npImg:
-        model:
-        names:
-
-    Returns:
-
-    """
-    im = npImg / 255
-    im = im.astype(cp.half)
-
-    im = cp.moveaxis(im, 3, 1)
-    im = torch.from_numpy(cp.asnumpy(im)).to('cuda')
-
-    # Detecting all the objects
-    results = model(im)
-
-    pred = non_max_suppression(
-        results, confidence, confidence, [0, 1, 2, 3], False, max_det=2)
-
-    targets = []
-    for i, det in enumerate(pred):
-        gn = torch.tensor(im.shape)[[0, 0, 0, 0]]
-        if len(det):
-            for *xyxy, conf, cls in reversed(det):
-
-                if CT == True and T == False:
-                    if int(cls.item()) == 0:
-                        targets.append((xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist() +
-                                       [float(conf), int(cls)])  # normalized xywh
-                elif T == True and CT == False:
-                    if int(cls.item()) == 2:
-                        targets.append((xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist() +
-                                       [float(conf), int(cls)])  # normalized xywh
-                else:
-                    if int(cls.item()) == 0 or int(cls.item()) == 2:
-                        targets.append((xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist() +
-                                       [float(conf), int(cls)])  # normalized xywh
-
-    targets = pd.DataFrame(
-        targets, columns=['current_mid_x', 'current_mid_y', 'width', "height", "confidence", "class"])
-    return targets
-
-
-def move_Mouse(targets, center_screen, camera):
-    """
-    获取目标数据（坐标，高度）
-    Returns:
-
-    """
-    # If there are people in the center bounding box
-    if len(targets) > 0:
-        if (centerOfScreen):
-            # Compute the distance from the center
-            """
-            （current_mid_x,current_mid_y)：检测到方框的中心点
-            """
-            targets["dist_from_center"] = np.sqrt((targets.current_mid_x - center_screen[0]) ** 2 + (
-                    targets.current_mid_y - center_screen[1]) ** 2)
-
-            # Sort the data frame by distance from center
-            targets = targets.sort_values("dist_from_center")
-
-        # The center of the body
-        box_xMid = targets.iloc[0].current_mid_x
-        box_yMid = targets.iloc[0].current_mid_y
-
-        # The location of the mouse
-        mouse_x = center_screen[0]
-        mouse_y = center_screen[1]
-
-        headshot_offset = targets.iloc[0].height * 0.32
-        # headshot_offset = targets.iloc[0].height * 0.1
-        # headshot_offset = targets.iloc[0].height
-
-        # Targets
-        target_x = box_xMid
-        target_y = box_yMid - headshot_offset
-
-        # Distance
-        dist_x = mouse_x - target_x
-        dist_y = mouse_y - target_y
-
-        """
-        鼠标平滑
-        ex_value = lock_smooth / lock_sen * atan((mouse_x - target_x)/320)/320
-        """
-        mouseMove = moveSmooth(dist_x, dist_y, lock_smooth, lock_sen, screenShotWidth, 2.6)
-
-        # Capture the screen.
-        # capture_screen(camera)
-
-        if win32api.GetKeyState(0x14):
-            # Logitech.mouse.move(int(mouseMove[0]), int(mouseMove[1]))
-            if (targets["dist_from_center"][0] <= aim_range):
-                # Logitech.mouse.move(int(mouseMove[0]), int(mouseMove[1]))
-                if (win32api.GetKeyState(win32con.VK_LBUTTON) >= 0):
-                    Logitech.mouse.move(int(mouseMove[0]), int(mouseMove[1]))
-                else:
-                    mouseMove = moveSmooth(dist_x, mouse_y-box_yMid, lock_smooth, lock_sen, screenShotWidth, 3)
-                    Logitech.mouse.move(int(mouseMove[0]), int(mouseMove[1]))
-
-def capture_screen(camera):
-    # while pressing left button
-    if (win32api.GetKeyState(win32con.VK_LBUTTON) < 0):
-        frame = camera.get_latest_frame()
-        from PIL import Image
-        pil_img = Image.fromarray(frame)
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        pil_img.save('images/' + str(timestamp) + '.png')
-
-
-def moveSmooth(dist_x, dist_y, lock_smooth, lock_sen, screenShotWidth, speed):
-    # speed越小越慢
-    k = speed * (1 / lock_smooth)
-    ex_x = (k / lock_sen * atan(dist_x / screenShotWidth) * screenShotWidth)
-    ex_y = (k / lock_sen * atan(dist_y / screenShotHeight) * screenShotWidth)
-    # The distant from the mouse point to the mid 'x' of box.
-    mouseMove = [-ex_x, -ex_y]
-    return mouseMove
+    mouse = LogitechDriver()
+    detector = TensorRTDetector(args.weights, mouse)
+    run(detector, camera, (c_width, c_height))
 
 
 if __name__ == "__main__":
@@ -269,6 +33,5 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         import traceback
-
         traceback.print_exception(e)
         print("ERROR: " + str(e))

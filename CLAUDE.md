@@ -10,41 +10,40 @@ Windows-only, Python 3.11 real-time object-detection aimbot built on a vendored 
 
 There is no build, lint, or test tooling. Each entry point is run directly:
 
-- `python main.py` — PyTorch (torch.hub local load), slowest
-- `python main_onnx.py` — ONNX Runtime (provider set by `onnxChoice` in config)
-- `python main_tensorrt.py` — TensorRT `.engine`, NVIDIA-only, fastest
-- `main_onnx_sjz.py` / `main_tensorrt_sanjiaozhou.py` — "三角洲" (Delta Force) variants that read `config_sjz.py` instead of `config.py`
+- `python main.py` — PyTorch (torch.hub local load through `hubconf.py`); defaults to `weights/cs2/yolov5s.pt`, override with `--weights`
+- `python main_onnx.py` — ONNX Runtime; provider set by `onnxChoice` in `config.py` (1=CPU, 2=DirectML/AMD, 3=CUDA/NVIDIA); defaults to `weights/sanjiaozhou/v1/320-FP16/sjz.onnx`
+- `python main_tensorrt.py` — TensorRT `.engine` via `DetectMultiBackend`, NVIDIA-only, fastest; defaults to `weights/cs2/xiaozhen.engine`
 
-Dependencies: `pip install -r requirements.txt`, plus torch (CUDA 11.8 build per README), and per entry point: `pynput`, `onnxruntime`/`onnxruntime-gpu` + `cupy-cuda11x` (onnx), or `tensorrt` (engine). A `.venv` exists in the project root.
+Dependencies: `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` builds a Python 3.11 venv (the system Python is 3.14, which has no torch/tensorrt wheels) and installs everything, including the CUDA 12.4 torch build, `onnxruntime-gpu` and `tensorrt-cu12`. `requirements.txt` lists only the shared packages. Preprocessing uses torch, so cupy is no longer required.
 
 Model export (`.pt` → `.onnx`/`.engine`): use the vendored `export.py`, e.g.
 `python export.py --weights ./yolov5s.pt --include engine --half --imgsz 320 320 --device 0`
 
-Runtime controls: CAPS_LOCK (key code `0x14`) toggles aiming; the quit key comes from `aaQuitKey` in the config file (currently `"P"`, not `q` as the README says).
+Runtime controls: CAPS_LOCK (key code `0x14`) toggles aiming; the quit key comes from `aaQuitKey` in `config.py` (currently `"P"`, not `q` as the README says).
 
 ## Architecture
 
-Every entry point follows the same pipeline, duplicated (not shared) across the `main_*.py` files:
+The three entry points are thin wrappers. All shared code lives in `aimbot/`:
 
-1. **Window selection** — `gameSelection.py` lists all windows, user picks one by index, activates it, and creates a `bettercam` camera capturing a `screenShotWidth × screenShotHeight` region centered on that window. Returns `(camera, cWidth, cHeight, region)` where cWidth/cHeight are the capture-region center (the crosshair position).
-2. **Mouse driver** — each entry point loads `logitech.driver.dll` via ctypes at import time. Requires Logitech GHUB or LGS to be running (`device_open() == 1`), otherwise all `Logitech.mouse.move()` calls are silent no-ops. Relative moves go through `driver.moveR(x, y, True)`; this bypasses win32 SendInput, which some anti-cheat platforms block.
-3. **Inference + targeting loop** — grab frame → normalize (half precision when CUDA) → model → `non_max_suppression` (vendored `utils/general.py`) → build a pandas DataFrame of normalized xywh targets → sort by distance from capture center → nearest target wins → compute headshot offset (fraction of box height) → move mouse only while CAPS_LOCK is on and (in some variants) only when within `aim_range` pixels of center.
+- `aimbot/capture.py` — `game_selection()` lists windows via `pygetwindow`, the user picks one by index, it activates the window (up to 10 retries) and starts a `bettercam` camera on a `screenShotWidth × screenShotHeight` region centered on that window (`target_fps`, `video_mode=True`, `max_buffer_len=512`). Returns `(camera, c_width, c_height)`, the crosshair position inside the capture.
+- `aimbot/driver.py` — `LogitechDriver` loads `logitech.driver.dll` via ctypes. Requires Logitech GHUB or LGS to be running (`device_open() == 1`), otherwise `move()` is a silent no-op. Relative moves go through `moveR(x, y, True)`, bypassing win32 SendInput.
+- `aimbot/backends/` — one detector per entry point. `TorchDetector` (`.pt` via torch.hub), `OnnxDetector` (ONNX Runtime, provider from `onnxChoice`), `TensorRTDetector` (`.engine` via `DetectMultiBackend`, FP16). Preprocessing is plain torch: one host-to-device copy, then permute, cast and normalize on GPU. No cupy.
+- `aimbot/targeting.py` — `boxes_from_nms` turns NMS output into plain tuples, `select_target` picks the box closest to the crosshair, `aim_at` applies the headshot offset and the arctan smoothing (`move_smooth`, scaled by `lock_smooth`/`lock_sen`). While the left button is held the aim point drops to the box center and the move speeds up. Movement only happens while CAPS_LOCK is on and the target is within `aim_range`.
+- `aimbot/loop.py` — the frame loop: grab frame, infer, aim, optional screenshot capture, CPS printout, optional OpenCV preview.
+
+`models/`, `utils/`, `hubconf.py`, `export.py` are vendored YOLOv5 v7.0 (AGPL-3.0) — treat as upstream library code.
 
 Key structural facts:
 
-- `models/`, `utils/`, `hubconf.py`, `export.py` are vendored YOLOv5 v7.0 — treat as upstream library code; project-specific logic lives in the `main_*.py` files, `config.py`/`config_sjz.py`, and `gameSelection.py`.
-- All entry points patch `pathlib.PosixPath = pathlib.WindowsPath` at import so locally-loaded `.pt` checkpoints (saved on Posix) deserialize on Windows.
-- Model classes: `0` = CT body, `1` = CT head, `2` = T body, `3` = T head (class list comes from the checkpoint; NMS `classes` filter is `[0, 1, 2, 3]`). The `CT`/`T` flags in `config.py` filter which team is targeted in `main_tensorrt.py`.
-- TensorRT variants preprocess on GPU with `cupy` before handing a numpy array to torch.
-- Mouse smoothing: `main_tensorrt*.py` use `moveSmooth()` (arctan-based curve scaled by `lock_smooth`/`lock_sen`); `main.py` instead fires several scaled-down moves per frame (1.1× down to 0.5×).
+- NMS uses `confidence` and `iou` from `config.py` separately; previously the confidence value was passed as the IoU threshold too.
+- Target selection and sorting no longer build a pandas DataFrame per frame.
+- `main_tensorrt.py` filters to body classes only (`0` for CT, `2` for T) via the `CT`/`T` flags; the other two entry points keep every class.
+- Headshot offset fractions differ per backend: 0.2 (torch), 0.1 (onnx), 0.32 (tensorrt).
+- `export.py`'s TensorRT path uses `set_memory_pool_limit` and `build_serialized_network`, so it works on TensorRT 10 as well as 8.x.
+- Weight paths default per entry point but are all overridable with `--weights`.
 
 ## Known Stale Code (gotchas)
 
-- `main.py` is out of sync with `config.py`: it imports `useMask`, `maskWidth`, `maskHeight`, `headshot_mode` (and `maskSide` mid-loop), which `config.py` no longer defines, and unpacks 3 values from `gameSelection()` which now returns 4. It will fail before the main loop until fixed. The other entry points work with the current configs.
-- Weight paths are hardcoded per entry point:
-  - `main.py` → `weights/CS2-2/yolov5s.pt` (path does not currently exist under `weights/`)
-  - `main_onnx.py` / `main_onnx_sjz.py` → `weights/sanjiaozhou/v1/320-FP16/sjz.onnx`
-  - `main_tensorrt.py` → `weights/cs2/xiaozhen.engine`
-  - `main_tensorrt_sanjiaozhou.py` → `weights/sanjiaozhou/v2/320-FP16/sjz_yolov5.engine`
-- `capture_screen()` in `main_onnx.py` saves training screenshots to a hardcoded absolute path (`C:\Users\30218\Desktop\SJZ\train/`); the copy in `main_tensorrt.py` saves to `images/`. Only invoked when `capture` is enabled and left mouse is held.
-- `requirements.txt` is incomplete: it omits `pynput`, `torch`, `onnxruntime*`, and `cupy` which the entry points import.
+- `config_sjz.py` still exists but nothing imports it — the former 三角洲 entry points that read it were removed.
+- `main.py` needs a `.pt` checkpoint at `weights/cs2/yolov5s.pt` (or a `--weights` override); `weights/` currently only ships `.onnx` and `.engine` files, so the PyTorch entry point cannot run until a checkpoint is exported or supplied.
+- The README's "Configurable Settings" section documents options (`useMask`, `headshot_mode`, `aaMovementAmp`, `aaDetectionBox`) that no longer exist; `config.py` is the source of truth.

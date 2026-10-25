@@ -1,3 +1,4 @@
+# Core runtime, installed by scripts/setup.ps1 into the Python 3.11 venv.
 PyAutoGUI
 PyGetWindow
 opencv-python
@@ -14,3 +15,11 @@ psutil
 dxcam
 onnxruntime_directml
 bettercam
+pynput
+Pillow
+
+# Installed separately by scripts/setup.ps1, pinned to CUDA 12.4:
+#   torch / torchvision        --index-url https://download.pytorch.org/whl/cu124
+#   onnxruntime-gpu            main_onnx.py with onnxChoice = 3
+#   tensorrt-cu12 cuda-python  main_tensorrt.py and export.py --include engine
+#   cupy-cuda12x               optional; the TensorRT backend preprocesses with torch
