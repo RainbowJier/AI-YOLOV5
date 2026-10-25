@@ -4,46 +4,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Windows-only, Python 3.11 real-time object-detection aimbot built on a vendored YOLOv5 v7.0 codebase (rootkitorg AI-Aimbot fork with Chinese modifications). Captures the center of a game window, runs YOLOv5 inference, and moves the mouse via the Logitech driver DLL. Comments and config are bilingual (Chinese/English).
+Windows-only, Python 3.11 real-time object-detection aimbot built on a vendored YOLOv5 v7.0 codebase. Captures the center of a game window, runs YOLOv5 inference, and moves the mouse via the Logitech driver DLL. Comments and config are bilingual (Chinese/English).
+
+## Layout
+
+Two trees that do not import each other:
+
+- `app/` — the runtime. Single entry `app/main.py`; the backend follows the weight suffix (`.pt` torch, `.onnx` onnxruntime, `.engine` tensorrt). `app/aimbot/` holds capture, driver, preprocess, nms, targeting, loop, engine loader and backends. `app/config.py` is the only runtime config.
+- `train/` — full YOLOv5 v7.0 training stack: `train.py`, `val.py`, `export.py`, `models/`, `utils/`, `data/`. Kept from upstream plus local patches listed below.
+- `weights/` — exported models. `docs/` — RUN / TRAINING / EXPORT guides (Chinese).
+
+The only cross-tree dependency: `app/aimbot/backends/torch_backend.py` puts `train/` on `sys.path` while a `.pt` checkpoint unpickles (the checkpoint references `models.yolo` classes); nothing else crosses.
 
 ## Running
 
-There is no build, lint, or test tooling. Each entry point is run directly:
+`powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` builds a Python 3.11 venv (system Python is 3.14, no torch/tensorrt wheels) with torch 2.11 cu128, onnxruntime-gpu 1.23 (last CUDA 12 build; 1.24+ needs CUDA 13 and cannot share the process), tensorrt-cu12 11, plus `requirements.txt` and `train/requirements.txt`.
 
-- `python main.py` — PyTorch (torch.hub local load through `hubconf.py`); defaults to `weights/cs2/yolov5s.pt`, override with `--weights`
-- `python main_onnx.py` — ONNX Runtime; provider set by `onnxChoice` in `config.py` (1=CPU, 2=DirectML/AMD, 3=CUDA/NVIDIA); defaults to `weights/sanjiaozhou/v1/320-FP16/sjz.onnx`
-- `python main_tensorrt.py` — TensorRT `.engine` via `DetectMultiBackend`, NVIDIA-only, fastest; defaults to `weights/cs2/xiaozhen.engine`
+- `.\.venv\Scripts\python.exe app\main.py --weights weights\cs2\xiaozhen.engine` — default when `--weights` is omitted
+- `.onnx` provider comes from `onnxChoice` in `app/config.py` (1=CPU, 2=DirectML, 3=CUDA)
+- Training: see `docs/TRAINING.md`; export pt→onnx→engine: `docs/EXPORT.md`
 
-Dependencies: `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` builds a Python 3.11 venv (the system Python is 3.14, which has no torch/tensorrt wheels) and installs everything, including the CUDA 12.4 torch build, `onnxruntime-gpu` and `tensorrt-cu12`. `requirements.txt` lists only the shared packages. Preprocessing uses torch, so cupy is no longer required.
+Runtime controls: CAPS_LOCK (`0x14`) toggles aiming; quit key is `aaQuitKey` in `app/config.py` (`P`).
 
-Model export (`.pt` → `.onnx`/`.engine`): use the vendored `export.py`, e.g.
-`python export.py --weights ./yolov5s.pt --include engine --half --imgsz 320 320 --device 0`
+## Runtime architecture (app/)
 
-Runtime controls: CAPS_LOCK (key code `0x14`) toggles aiming; the quit key comes from `aaQuitKey` in `config.py` (currently `"P"`, not `q` as the README says).
+- `capture.py` — window picker (titled windows only), up to 10 activate retries, bettercam on the centered `screenShotWidth × screenShotHeight` region, RGB, `max_buffer_len=64`. Returns `(camera, cx, cy)`.
+- `driver.py` — `logitech.driver.dll` via ctypes, argtypes set once; needs GHUB/LGS running or moves are no-ops.
+- `preprocess.py` — one HtoD copy, permute/cast/normalize on GPU; CPU path writes BCHW directly into a preallocated array.
+- `nms.py` — single-frame class-agnostic NMS, no sort, no time check. Returns one `(n, 6)` tensor.
+- `backends/` — `base.Detector` shared; `OnnxDetector` uses IO binding on CUDA with a reused output buffer; `TensorRTDetector` drives `aimbot/engine.py`; `TorchDetector` loads `.pt` directly (no torch.hub).
+- `targeting.py` — `pick` selects the closest box on the tensor and transfers that one row; `aim_at` gates on CapsLock + `aim_range`, applies headshot offset (torch 0.2 / onnx 0.1 / tensorrt 0.32) and arctan smoothing; left button drops the aim point to the box center and speeds the move 3.0/2.6.
+- `loop.py` — grab → infer → aim → optional save/preview/CPS.
+- `engine.py` — TensorRT engine loader speaking both the 8.x binding API and the 10/11 tensor API (`num_io_tensors`, `set_tensor_address`, `execute_async_v3` + stream sync).
 
-## Architecture
+## Local patches in train/ (do not revert)
 
-The three entry points are thin wrappers. All shared code lives in `aimbot/`:
+- `torch.load(..., weights_only=False)` everywhere (torch 2.x default breaks these checkpoints).
+- `utils/general.py`: self-contained `check_requirements` (check-only, no auto-install; the fork used to `pip install ultralytics` at import time). Treats a bare string as a package name, `.txt`/Path as a file.
+- `utils/plots.py` and `utils/loggers/` restored from upstream v7.0 — the fork had swapped in versions that import `ultralytics`.
+- `models/yolo.py`: `check_anchor_order` inlined, `feature_visualization` hook removed.
+- `export.py`: ONNX opset 17 for TRT≥8; `NetworkDefinitionCreationFlag.EXPLICIT_BATCH` only on 8.x (enum member removed in 10/11); `set_memory_pool_limit` + `build_serialized_network` for TRT 10/11 with 8.x fallbacks.
 
-- `aimbot/capture.py` — `game_selection()` lists windows via `pygetwindow`, the user picks one by index, it activates the window (up to 10 retries) and starts a `bettercam` camera on a `screenShotWidth × screenShotHeight` region centered on that window (`target_fps`, `video_mode=True`, `max_buffer_len=512`). Returns `(camera, c_width, c_height)`, the crosshair position inside the capture.
-- `aimbot/driver.py` — `LogitechDriver` loads `logitech.driver.dll` via ctypes. Requires Logitech GHUB or LGS to be running (`device_open() == 1`), otherwise `move()` is a silent no-op. Relative moves go through `moveR(x, y, True)`, bypassing win32 SendInput.
-- `aimbot/backends/` — one detector per entry point. `TorchDetector` (`.pt` via torch.hub), `OnnxDetector` (ONNX Runtime, provider from `onnxChoice`), `TensorRTDetector` (`.engine` via `DetectMultiBackend`, FP16). Preprocessing is plain torch: one host-to-device copy, then permute, cast and normalize on GPU. No cupy.
-- `aimbot/targeting.py` — `boxes_from_nms` turns NMS output into plain tuples, `select_target` picks the box closest to the crosshair, `aim_at` applies the headshot offset and the arctan smoothing (`move_smooth`, scaled by `lock_smooth`/`lock_sen`). While the left button is held the aim point drops to the box center and the move speeds up. Movement only happens while CAPS_LOCK is on and the target is within `aim_range`.
-- `aimbot/loop.py` — the frame loop: grab frame, infer, aim, optional screenshot capture, CPS printout, optional OpenCV preview.
+## Known gotchas
 
-`models/`, `utils/`, `hubconf.py`, `export.py` are vendored YOLOv5 v7.0 (AGPL-3.0) — treat as upstream library code.
-
-Key structural facts:
-
-- NMS uses `confidence` and `iou` from `config.py` separately; previously the confidence value was passed as the IoU threshold too.
-- Target selection and sorting no longer build a pandas DataFrame per frame.
-- `main_tensorrt.py` filters to body classes only (`0` for CT, `2` for T) via the `CT`/`T` flags; the other two entry points keep every class.
-- Headshot offset fractions differ per backend: 0.2 (torch), 0.1 (onnx), 0.32 (tensorrt).
-- `export.py`'s TensorRT path uses `set_memory_pool_limit` and `build_serialized_network`, so it works on TensorRT 10 as well as 8.x.
-- Weight paths default per entry point but are all overridable with `--weights`.
-
-## Known Stale Code (gotchas)
-
-- `config_sjz.py` still exists but nothing imports it — the former 三角洲 entry points that read it were removed.
-- `main.py` needs a `.pt` checkpoint at `weights/cs2/yolov5s.pt` (or a `--weights` override); `weights/` currently only ships `.onnx` and `.engine` files, so the PyTorch entry point cannot run until a checkpoint is exported or supplied.
-- The README's "Configurable Settings" section documents options (`useMask`, `headshot_mode`, `aaMovementAmp`, `aaDetectionBox`) that no longer exist; `config.py` is the source of truth.
+- `.engine` files are GPU-architecture-bound; TensorRT 11 still deserializes 8.x/10 engines.
+- `train.py` auto-downloads weights/datasets on first use (coco128 smoke test in TRAINING.md).
+- `app/main.py` chdirs to the repo root so `weights/` paths resolve from anywhere.

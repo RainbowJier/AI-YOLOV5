@@ -1,25 +1,19 @@
-# Core runtime, installed by scripts/setup.ps1 into the Python 3.11 venv.
-PyAutoGUI
+# Shared app/ runtime. scripts/setup.ps1 installs this plus train/requirements.txt
+# into the Python 3.11 venv, then pins the CUDA stack so torch, ONNX Runtime and
+# TensorRT all sit on CUDA 12 in one process.
 PyGetWindow
 opencv-python
-numpy
-pandas
+numpy>=1.26,<2.3
 pywin32
 pyyaml
 tqdm
-matplotlib
-seaborn
 requests
-ipython
 psutil
-dxcam
-onnxruntime_directml
 bettercam
-pynput
 Pillow
+onnxruntime-directml
 
-# Installed separately by scripts/setup.ps1, pinned to CUDA 12.4:
-#   torch / torchvision        --index-url https://download.pytorch.org/whl/cu124
-#   onnxruntime-gpu            main_onnx.py with onnxChoice = 3
-#   tensorrt-cu12 cuda-python  main_tensorrt.py and export.py --include engine
-#   cupy-cuda12x               optional; the TensorRT backend preprocesses with torch
+# Pinned by scripts/setup.ps1, not here, because they come from different indexes:
+#   torch==2.11.* torchvision==0.26.*    --index-url https://download.pytorch.org/whl/cu128
+#   onnxruntime-gpu>=1.23,<1.24          CUDA 12 build (1.24+ needs CUDA 13), for onnxChoice = 3
+#   tensorrt-cu12>=11,<12                TensorRT 11; reads 8.x/10 engines and builds new ones

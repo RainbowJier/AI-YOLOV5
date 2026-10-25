@@ -1,11 +1,12 @@
-# Environment for the aimbot. The repo targets Python 3.11; the system Python
-# here is 3.14, which torch/tensorrt do not ship wheels for, so this builds a
-# dedicated 3.11 venv with uv.
+# Environment for both app/ (runtime) and train/ (training). The repo targets
+# Python 3.11; the system Python here is 3.14, which torch and TensorRT do not
+# ship wheels for, so this builds a dedicated 3.11 venv with uv.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 #
-# Then run with:
-#   .\.venv\Scripts\python.exe main_tensorrt.py
+# Then:
+#   .\.venv\Scripts\python.exe app\main.py --weights weights\cs2\xiaozhen.engine
+#   .\.venv\Scripts\python.exe train\train.py --data coco128.yaml --img 320
 
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
@@ -18,13 +19,18 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 uv python install 3.11
 uv venv --python 3.11 .venv
 
-# PyTorch with CUDA 12.4. CPU-only fallback: drop the --index-url.
-uv pip install --python .venv torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# One CUDA generation for the whole process: torch 2.11 cu128 and
+# onnxruntime-gpu 1.23 both sit on CUDA 12. onnxruntime-gpu 1.24+ moved to
+# CUDA 13 and cannot share a process with this torch, so it is pinned below 1.24.
+uv pip install --python .venv torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
-uv pip install --python .venv -r requirements.txt
+# Shared runtime packages (app/) and training packages (train/).
+uv pip install --python .venv -r requirements.txt -r train\requirements.txt
 
-# NVIDIA-only extras used by main_onnx.py (onnxChoice=3) and main_tensorrt.py.
-uv pip install --python .venv onnxruntime-gpu tensorrt-cu12 cuda-python
+# NVIDIA-only extras: .onnx with onnxChoice = 3, and .engine on TensorRT 11.
+# tensorrt-cu12 11 still deserializes 8.x engines, so existing weights keep working.
+uv pip install --python .venv "onnxruntime-gpu>=1.23,<1.24" "tensorrt-cu12>=11,<12" cuda-python
 
 Write-Host ""
-Write-Host "Done. Run: .\.venv\Scripts\python.exe main_tensorrt.py"
+Write-Host "Done. Run:"
+Write-Host "  .\.venv\Scripts\python.exe app\main.py --weights weights\cs2\xiaozhen.engine"
