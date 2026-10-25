@@ -1,6 +1,6 @@
-﻿# 🎯 AI Aimbot 🎮
+﻿# 🎯 AI-AIMBOT-YOLOV5 🎮
 
-- [🎯 AI Aimbot 🎮](#---ai-aimbot---)
+- [🎯 AI-AIMBOT-YOLOV5 🎮](#---ai-aimbot-yolov5---)
     * [TODO](#todo)
     * [There are 3 Versions 🚀🚦🖥️](#there-are-3-versions--------)
     * [🧰 Requirements](#---requirements)
