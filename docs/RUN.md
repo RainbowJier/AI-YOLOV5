@@ -49,6 +49,19 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 瞄准逻辑：选离准星最近的框，距离不超过 `aim_range` 才动；未开火瞄头部偏移点，按住左键时瞄框中心并加速。详见 `app-cs2/config.py` 的注释和根 README。
 
+## 5. 视频检测（离线）
+
+用和实时完全相同的后端跑一个视频文件，检查模型效果：
+
+```powershell
+.\.venv\Scripts\python.exe app-cs2\detect.py --source mp4\你的视频.mp4 --conf 0.75
+```
+
+- 后端按 `--weights` 后缀选择、ONNX 引擎由 `onnxChoice` 决定，和 `main.py` 完全一致（4 = OpenVINO 核显/NPU 自动，最快）
+- 视角是**整帧 letterbox**（看全画面），不是实战的中心 320 裁剪——适合检查模型，不代表实战视场
+- 产物：视频同目录 `<名字>_detected.mp4` + 少量 `*_det_*.png` 快照，终端打印速度统计
+- `--vid-stride 3` 每 3 帧取 1 帧加速；`--weights` 可换 `.pt` / `.engine`
+
 ## 常见问题
 
 - **鼠标完全不动。** 罗技 GHUB / LGS 没在运行，或 `logitech.driver.dll` 没加载成功（启动时会打印 `GHUB or LGS driver not found`）。确认 Caps Lock 已开、目标在 `aim_range` 内。

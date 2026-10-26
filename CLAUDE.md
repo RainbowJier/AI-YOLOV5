@@ -10,7 +10,7 @@ Windows-only, Python 3.11 real-time object-detection aimbot built on a vendored 
 
 Two trees that do not import each other:
 
-- `app-cs2/` — the runtime. Single entry `app-cs2/main.py`; the backend follows the weight suffix (`.pt` torch, `.onnx` onnxruntime, `.engine` tensorrt). `app-cs2/aimbot/` holds capture, driver, preprocess, nms, targeting, loop, engine loader and backends. `app-cs2/config.py` is the only runtime config.
+- `app-cs2/` — the runtime. Single entry `app-cs2/main.py`; the backend follows the weight suffix (`.pt` torch, `.onnx` onnxruntime, `.engine` tensorrt). `app-cs2/detect.py` runs offline video detection on those same backends (letterbox whole-frame view; `config.onnxChoice` drives the engine). `app-cs2/aimbot/` holds capture, driver, preprocess, nms, targeting, loop, engine loader and backends. `app-cs2/config.py` is the only runtime config.
 - `train/` — full YOLOv5 v7.0 training stack: `train.py`, `val.py`, `export.py`, `models/`, `utils/`, `data/`. Kept from upstream plus local patches listed below. YOLOv11 is trained with the `ultralytics` package instead (see docs/TRAINING.md §5) and exported with `train/export_yolo11.py`.
 - `weights/` — exported models. `docs/` — RUN / TRAINING / EXPORT guides (Chinese).
 
