@@ -64,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 ## 常见问题
 
-- **鼠标完全不动。** 罗技 GHUB / LGS 没在运行，或 `logitech.driver.dll` 没加载成功（启动时会打印 `GHUB or LGS driver not found`）。确认 Caps Lock 已开、目标在 `aim_range` 内。
+- **鼠标完全不动。** 看用的是哪个驱动（`config.py` 的 `mouse_driver`）：`sendinput` 任意鼠标免软件，理论上不会因此不动，确认 Caps Lock 已开、目标在 `aim_range` 内；`logitech` 需要 GHUB / LGS 在运行且接了罗技设备，否则报 `GHUB or LGS driver not found`。
 - **选不中游戏窗口。** Windows 的 SetForegroundWindow 限制。提示重试时手动切到游戏再等它试完。
 - **ONNX 报没有对应 Provider。** `onnxChoice=3` 需要 `onnxruntime-gpu`（1.23），`2` 需要 `onnxruntime-directml`。装了哪个就选哪个。
 - **engine 加载失败。** 引擎和 GPU 架构绑定，换卡要用 `.pt` 重新导出（见 EXPORT.md）。

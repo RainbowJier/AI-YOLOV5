@@ -10,6 +10,11 @@ screenShotWidth = 320
 # 4 - Intel OpenVINO（核显/NPU/CPU 自动挑，无 NVIDIA 独显时最快；
 #     注意核显同时在渲染桌面/游戏时会有算力争夺）
 onnxChoice = 4
+
+# onnxChoice = 4 时 OpenVINO 用的设备：
+#   'AUTO' 自动挑（通常落在核显）；也可固定 'GPU' / 'NPU' / 'CPU'
+ov_device = 'NPU'  # 打游戏时用 NPU：游戏渲染占核显，NPU 是独立单元互不抢；
+
 #
 CT = True
 T = True
@@ -29,7 +34,7 @@ lock_smooth = 4
 capture = False
 
 # fps
-target_fps = 110
+target_fps = 60
 
 # lock幅度系数；若在桌面试用请调成1，在游戏中(csgo)则为灵敏度
 lock_sen = 1
@@ -42,6 +47,10 @@ iou = 0.45
 
 # What key to press to quit and shutdown the autoaim
 aaQuitKey = "P"
+
+# 鼠标驱动：'sendinput' 任意鼠标免厂商软件（win32 注入）；
+#           'logitech' 走罗技驱动，需 GHUB/LGS 在运行且有罗技设备
+mouse_driver = "sendinput"
 
 # Displays the Corrections per second in the terminal
 cpsDisplay = True

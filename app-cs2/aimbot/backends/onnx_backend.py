@@ -6,7 +6,7 @@ import torch
 from aimbot.backends.base import Detector
 from aimbot.nms import nms
 from aimbot.preprocess import frame_to_cuda, frame_to_numpy
-from config import confidence, iou, onnxChoice
+from config import confidence, iou, onnxChoice, ov_device
 
 _PROVIDERS = {1: "CPUExecutionProvider", 2: "DmlExecutionProvider", 3: "CUDAExecutionProvider"}
 
@@ -19,13 +19,11 @@ class OnnxDetector(Detector):
         self.ov_request = None
 
         if onnxChoice == 4:
-            # Intel OpenVINO: AUTO picks the Arc iGPU / NPU / CPU. Fastest by
-            # far on Meteor Lake (1.3 ms on the iGPU vs 4.3 ms tuned ORT CPU).
+            # Intel OpenVINO: ov_device picks the Arc iGPU / NPU / CPU. Fastest
+            # by far on Meteor Lake (1.3 ms on the iGPU vs 4.3 ms tuned ORT CPU).
             import openvino as ov
             core = ov.Core()
-            compiled = core.compile_model(weights, 'AUTO', {'PERFORMANCE_HINT': 'LATENCY'})
-            # 'AUTO' picks a device per model; pin 'GPU' or 'NPU' to force the
-            # Arc iGPU / NPU when the game does not run on the iGPU.
+            compiled = core.compile_model(weights, ov_device, {'PERFORMANCE_HINT': 'LATENCY'})
             self.ov_request = compiled.create_infer_request()
             self.input_name = compiled.inputs[0].any_name
             self.half = 'float16' in str(compiled.inputs[0].element_type)

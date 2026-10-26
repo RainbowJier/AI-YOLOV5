@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 ## 硬性要求
 
-- Windows + 罗技 GHUB 或 LGS 常驻（否则鼠标移动是空操作）。
+- Windows + 任意鼠标（默认 `sendinput` 驱动免厂商软件；罗技设备可选 GHUB/LGS 驱动）。
 - NVIDIA 路径需要 CUDA 12.8 驱动；`.engine` 与 GPU 架构绑定，换卡重新导出。
 - ONNX Runtime 固定 1.23：1.24 起改绑 CUDA 13，不能和这套 torch 共进程。
 

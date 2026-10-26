@@ -18,8 +18,9 @@ if _APP not in sys.path:
 os.chdir(_ROOT)
 
 from aimbot.capture import game_selection
-from aimbot.driver import LogitechDriver
+from aimbot.driver import create_driver
 from aimbot.loop import run
+from config import mouse_driver
 
 DEFAULT_WEIGHTS = 'weights/cs2/xiaozhen.engine'
 
@@ -50,7 +51,7 @@ def main():
         return
     camera, c_width, c_height = selected
 
-    mouse = LogitechDriver()
+    mouse = create_driver(mouse_driver)
     detector = load_detector(args.weights, mouse)
     run(detector, camera, (c_width, c_height))
 
