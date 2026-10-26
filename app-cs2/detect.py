@@ -88,15 +88,18 @@ def main():
 
     cap = cv2.VideoCapture(args.source)
     if not cap.isOpened():
-        raise SystemExit('cannot open ' + args.source)
+        raise SystemExit('cannot open {} (resolved: {})'.format(
+            args.source, os.path.abspath(args.source)))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps_in = cap.get(cv2.CAP_PROP_FPS) or 30
     stem = os.path.splitext(os.path.basename(args.source))[0]
     out_mp4 = os.path.join(os.path.dirname(args.source) or '.', stem + '_detected.mp4')
 
     writer = None
-    saved = n_seen = n_det = 0
+    saved = n_seen = n_infer = n_det = 0
     infer_ms = total_ms = 0.0
     start = time.perf_counter()
+    last_log = 0.0
 
     while True:
         ok, frame = cap.read()
@@ -109,7 +112,15 @@ def main():
         t0 = time.perf_counter()
         rgb = cv2.cvtColor(letterbox(frame, mh, mw), cv2.COLOR_BGR2RGB)
         det = detector.infer(np.ascontiguousarray(rgb))
+        n_infer += 1
         infer_ms += (time.perf_counter() - t0) * 1000
+        now = time.perf_counter()
+        if now - last_log > 2:  # progress line, refreshed in place
+            last_log = now
+            eta = (total_frames - n_seen) / max(n_seen, 1) * (now - start)
+            print('\r{:6d}/{}  infer {:4.1f} ms  ETA {:02d}:{:02d}   '.format(
+                n_seen, total_frames, infer_ms / n_infer, int(eta) // 60, int(eta) % 60),
+                end='', flush=True)
 
         rows = det.cpu().tolist() if det.numel() else []
         n_det += len(rows)
@@ -134,8 +145,10 @@ def main():
         writer.release()
     if n_seen == 0:
         raise SystemExit('no frames decoded from ' + args.source)
+    print()  # close the progress line before the summary
 
-    print('frames: {}  detections: {}  ({:.2f}/frame)'.format(n_seen, n_det, n_det / n_seen))
+    print('frames: {}  inferred: {}  detections: {}  ({:.2f}/frame)'.format(
+        n_seen, n_infer, n_det, n_det / n_infer))
     print('infer:  {:.1f} ms/frame   wall: {:.1f} ms/frame  ~{:.0f} FPS'.format(
         infer_ms / n_seen, total_ms / n_seen, 1000 * n_seen / total_ms))
     print('output: ' + out_mp4)
