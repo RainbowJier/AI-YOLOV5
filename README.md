@@ -8,10 +8,10 @@ Windows 实时目标检测自瞄：截取游戏窗口中心 320×320 区域，YO
 app-cs2/     运行时。唯一入口 main.py（后端按权重后缀自动选择）；detect.py 离线视频检测
   aimbot/    采集 / 鼠标驱动 / 上传 / NMS / 选目标 / 主循环 / TensorRT 引擎加载 / 推理后端
   native/    鼠标驱动：mouse_driver.c/.dll（默认）、logitech.driver.dll（可选）
+  weights/   已导出的模型（10w 引擎 + onnx，本机构建，换显卡需重导 engine）
 train/       YOLOv5 v7.0 完整训练栈（train.py / val.py / export.py）；v11 用 ultralytics 训，export_yolo11.py 导出
-weights/     已导出的模型
 docs/        RUN 启动 · TRAINING 训练 · EXPORT 格式转换 · DRIVER 鼠标驱动
-scripts/     setup.ps1 一键环境 · build_dll.ps1 驱动编译
+scripts/     setup.ps1 一键环境
 ```
 
 两个目录互不依赖：`train/` 只在 `.pt` 反序列化的瞬间被 `torch_backend.py` 挂上 `sys.path`（checkpoint 引用 `models.yolo` 类），其余时候完全隔离。
@@ -23,12 +23,11 @@ scripts/     setup.ps1 一键环境 · build_dll.ps1 驱动编译
 #    torch 2.11 cu128 / onnxruntime-gpu 1.23 / tensorrt-cu12 11，已内置国内镜像源
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
-# 2. 跑起来（默认 weights\cs2\xiaozhen.engine，TensorRT FP16，最快）
+# 2. 跑起来（默认 app-cs2\weights\10w-v5-320-16.engine，TensorRT FP16，最快）
 .\.venv\Scripts\python.exe app-cs2\main.py
-
-# 3.（可选）编译自建鼠标驱动 DLL，需要 MSVC Build Tools
-powershell -ExecutionPolicy Bypass -File scripts\build_dll.ps1
 ```
+
+鼠标驱动 `mouse_driver.dll` 已预编译随仓库，开箱即用。
 
 启动后终端列出所有有标题的窗口，输入序号回车，程序激活该窗口并开始截取推理。
 
@@ -50,13 +49,23 @@ powershell -ExecutionPolicy Bypass -File scripts\build_dll.ps1
 
 | 文件 | 格式 |
 | --- | --- |
-| `weights/cs2/xiaozhen.engine` | TensorRT，默认 |
-| `weights/cs2/10w-v5-320-fp16.engine` | TensorRT FP16 |
-| `weights/cs2/10w-v5-320-16.onnx` | ONNX FP16 |
-| `weights/sanjiaozhou/v1/320-FP16/sjz.onnx` | ONNX FP16 |
-| `weights/sanjiaozhou/v2/320-FP16/sjz_yolov5.{onnx,engine,pt}` | ONNX / TensorRT / PyTorch |
+| `app-cs2/weights/10w-v5-320-16.engine` | TensorRT FP16，默认（本机构建，换显卡需重导） |
+| `app-cs2/weights/10w-v5-320-16.onnx` | ONNX FP16 |
 
 YOLOv5 和 YOLOv11 的输出布局不同（v5 带 objectness，v8/11 不带），运行时按张量形状自动识别，不需要任何开关。
+
+## 视频检测（离线）
+
+用和实时完全相同的后端跑一个视频文件，检查模型效果：
+
+```powershell
+.\.venv\Scripts\python.exe app-cs2\detect.py --source mp4\你的视频.mp4 --weights app-cs2\weights\10w-v5-320-16.engine
+```
+
+- 后端按 `--weights` 后缀选择，ONNX 引擎由 `onnxChoice` 决定，和 `main.py` 完全一致
+- 视角是**整帧 letterbox**（看全画面），不是实战的中心 320 裁剪——适合检查模型，不代表实战视场
+- 产物：视频同目录 `<名字>_detected.mp4` + 少量 `*_det_*.png` 快照，终端打印 `infer ms/frame` 和 FPS
+- `--vid-stride N` 每 N 帧取 1 帧加速长视频；`--conf` / `--iou` 临时覆盖阈值（不改 `config.py`）
 
 ## 性能设计
 

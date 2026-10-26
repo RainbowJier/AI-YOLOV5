@@ -23,17 +23,10 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ## 2. 启动
 
 ```powershell
-.\.venv\Scripts\python.exe app-cs2\main.py --weights weights\cs2\xiaozhen.engine
+.\.venv\Scripts\python.exe app-cs2\main.py --weights app-cs2\weights\10w-v5-320-16.engine
 ```
 
-不传 `--weights` 时默认就是上面这个引擎。其它选择：
-
-```powershell
-.\.venv\Scripts\python.exe app-cs2\main.py --weights weights\sanjiaozhou\v1\320-FP16\sjz.onnx
-.\.venv\Scripts\python.exe app-cs2\main.py --weights weights\sanjiaozhou\v2\320-FP16\sjz_yolov5.pt
-```
-
-自己训练/转换的模型看 [TRAINING.md](TRAINING.md) 和 [EXPORT.md](EXPORT.md)。权重可以是 YOLOv5 或 YOLOv11（ultralytics）训出来的，两者的输出格式不同，运行时按张量形状自动识别，不需要任何开关。
+不传 `--weights` 时默认就是上面这个引擎。自己训练/转换的模型看 [TRAINING.md](TRAINING.md) 和 [EXPORT.md](EXPORT.md)。权重可以是 YOLOv5 或 YOLOv11（ultralytics）训出来的，两者的输出格式不同，运行时按张量形状自动识别，不需要任何开关。
 
 ## 3. 选窗口
 
@@ -78,7 +71,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 ## 常见问题
 
-- **鼠标完全不动。** 看用的是哪个驱动（`config.py` 的 `mouse_driver`）：`dll` 用 `app-cs2/native/mouse_driver.dll`，没编译过会在启动时报 `DLL file not found`，按提示跑 `scripts\build_dll.ps1`；`logitech` 需要 GHUB / LGS 在运行且接了罗技设备，否则报 `GHUB or LGS driver not found`。两种驱动都先确认 Caps Lock 已开、目标在 `aim_range` 内。
+- **鼠标完全不动。** 看用的是哪个驱动（`config.py` 的 `mouse_driver`）：`dll` 用仓库自带的 `app-cs2/native/mouse_driver.dll`，报 `DLL file not found` 说明文件缺失，按 docs/DRIVER.md 重编或换 `logitech`；`logitech` 需要 GHUB / LGS 在运行且接了罗技设备，否则报 `GHUB or LGS driver not found`。两种驱动都先确认 Caps Lock 已开、目标在 `aim_range` 内。
 - **选不中游戏窗口。** Windows 的 SetForegroundWindow 限制。提示重试时手动切到游戏再等它试完。
 - **ONNX 报没有对应 Provider。** `onnxChoice=3` 需要 `onnxruntime-gpu`（1.23），`2` 需要 `onnxruntime-directml`。装了哪个就选哪个。
 - **engine 加载失败。** 引擎和 GPU 架构绑定，换卡要用 `.pt` 重新导出（见 EXPORT.md）。

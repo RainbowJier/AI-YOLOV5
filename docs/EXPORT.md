@@ -37,7 +37,7 @@ ONNX Runtime 的执行器由 `app-cs2/config.py` 的 `onnxChoice` 决定：`1` C
 要点：
 
 - `.engine` 与导出它的 GPU 架构和 TensorRT 大版本绑定。换显卡后要用 `.pt` 在新机器上重新 `--include engine`。
-- TensorRT 11 可以直接反序列化 8.x / 10 导出的旧引擎，所以 `weights/` 里已有的 `.engine` 不用重转。
+- `.engine` 和构建时的 GPU 架构、TensorRT 版本双重绑定：别的机器或旧版本 TensorRT 出的引擎在本机一般加载不了（报 `old deserialization call on a newer plan file`），所以 `app-cs2/weights` 里的引擎都以本机 `.onnx` 重导为准。
 - 需要动态 batch 时加 `--dynamic --batch 4`（运行时固定 batch 1，一般用不上）。
 
 ## 3. 验证

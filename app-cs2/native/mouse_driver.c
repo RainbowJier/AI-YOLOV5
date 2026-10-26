@@ -19,7 +19,7 @@
  *   int  md_set_timer_resolution(unsigned ms) 0 restores the default.
  *   int  md_get_sent(void)             Inputs accepted since md_init.
  *
- * Build: scripts/build_dll.ps1 (MSVC), or the cl line in docs/DRIVER.md.
+ * Build: the cl line in docs/DRIVER.md (VS x64 dev prompt).
  * Source stays pure ASCII: cl reads it back through the OEM code page
  * (936 on zh-CN systems) and non-ASCII comments trigger warning C4819.
  */

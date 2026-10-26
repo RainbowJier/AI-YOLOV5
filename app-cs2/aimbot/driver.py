@@ -67,7 +67,7 @@ class DllDriver:
             self._lib = ctypes.CDLL(dll_path)
         except OSError as e:
             print('Error, DLL file not found: {} ({})'.format(dll_path, e))
-            print('Build it with: powershell -ExecutionPolicy Bypass -File scripts\\build_dll.ps1')
+            print('The DLL ships with the repo; rebuild it per docs/DRIVER.md if deleted')
             return
 
         self._move = self._lib.md_move

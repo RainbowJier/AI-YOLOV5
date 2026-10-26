@@ -373,9 +373,18 @@ def export_engine(model, im, file, half, dynamic, simplify, workspace=4, verbose
             profile.set_shape(inp.name, (1, *im.shape[1:]), (max(1, im.shape[0] // 2), *im.shape[1:]), im.shape)
         config.add_optimization_profile(profile)
 
-    LOGGER.info(f'{prefix} building FP{16 if builder.platform_has_fast_fp16 and half else 32} engine as {f}')
-    if builder.platform_has_fast_fp16 and half:
-        config.set_flag(trt.BuilderFlag.FP16)
+    # platform_has_fast_fp16 was removed in TensorRT 11; on 10/11 just set
+    # the FP16 flag and let the builder fall back if the device has no fast fp16.
+    fast_fp16 = getattr(builder, 'platform_has_fast_fp16', True)
+    LOGGER.info(f'{prefix} building FP{16 if fast_fp16 and half else 32} engine as {f}')
+    if fast_fp16 and half:
+        if hasattr(trt.BuilderFlag, 'FP16'):  # TRT <= 10
+            config.set_flag(trt.BuilderFlag.FP16)
+        elif network.get_input(0).dtype != trt.DataType.HALF:
+            # TRT 11 removed the FP16 flag entirely; a HALF-typed graph (fp16
+            # onnx) builds FP16 on its own, an fp32 graph would stay FP32.
+            LOGGER.warning(f'{prefix} WARNING ⚠️ TensorRT 11 has no FP16 builder flag; '
+                           f'--half only reaches half-typed graphs, export the onnx with --half first')
     # build_engine was removed in TensorRT 10; build_serialized_network replaced it in 8.6.
     if hasattr(builder, 'build_serialized_network'):
         serialized = builder.build_serialized_network(network, config)
@@ -749,6 +758,16 @@ def run(
     if half:
         assert device.type != 'cpu' or coreml, '--half only compatible with GPU export, i.e. use --device 0'
         assert not dynamic, '--half not compatible with --dynamic, i.e. use either --half or --dynamic but not both'
+    if engine and file.suffix.lower() == '.onnx':
+        # ONNX → TensorRT direct build. TRT >= 8 parses the onnx file itself
+        # (export_engine re-exports the onnx only on TRT < 8), so no torch
+        # checkpoint is loaded and attempt_load below — .pt only — is skipped.
+        # im feeds the --dynamic profile shapes alone.
+        imgsz *= 2 if len(imgsz) == 1 else 1
+        im = torch.zeros(batch_size, 3, *imgsz).to(device)
+        f = [''] * len(fmts)
+        f[1], _ = export_engine(None, im, file, half, dynamic, simplify, workspace, verbose)
+        return [str(x) for x in f if x]
     model = attempt_load(weights, device=device, inplace=True, fuse=True)  # load FP32 model
 
     # Checks

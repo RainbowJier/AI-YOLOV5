@@ -1,8 +1,6 @@
 """Single entry point. The backend follows the weight file's suffix.
 
-    .\\.venv\\Scripts\\python.exe app-cs2\\main.py --weights weights\\cs2\\xiaozhen.engine
-    .\\.venv\\Scripts\\python.exe app-cs2\\main.py --weights weights\\sanjiaozhou\\v1\\320-FP16\\sjz.onnx
-    .\\.venv\\Scripts\\python.exe app-cs2\\main.py --weights weights\\sanjiaozhou\\v2\\320-FP16\\sjz_yolov5.pt
+    .\\.venv\\Scripts\\python.exe app-cs2\\main.py --weights app-cs2\\weights\\10w-v5-320-16.engine
 """
 
 import argparse
@@ -21,7 +19,7 @@ from aimbot.driver import create_driver
 from aimbot.loop import run
 from config import mouse_driver
 
-DEFAULT_WEIGHTS = 'weights/cs2/xiaozhen.engine'
+DEFAULT_WEIGHTS = 'app-cs2/weights/10w-v5-320-16.engine'
 
 
 def main():

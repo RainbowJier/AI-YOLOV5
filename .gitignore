@@ -15,11 +15,11 @@ test*
 datasets/
 train/runs/
 train/**/*.pt
-!weights/**/*.pt
+!app-cs2/weights/**/*.pt
 
 # wheels that used to live in the repo root
 *.whl
 
-# built from app-cs2/native/mouse_driver.c by scripts/build_dll.ps1;
-# logitech.driver.dll there is vendored and stays tracked
-app-cs2/native/mouse_driver.dll
+# both DLLs under app-cs2/native/ are vendored prebuilt and stay tracked;
+# rebuild mouse_driver.dll by hand (cl line in docs/DRIVER.md) only after
+# changing mouse_driver.c

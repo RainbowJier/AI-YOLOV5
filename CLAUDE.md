@@ -10,9 +10,9 @@ Windows-only, Python 3.11 real-time object-detection aimbot built on a vendored 
 
 Two trees that do not import each other:
 
-- `app-cs2/` — the runtime. Single entry `app-cs2/main.py`; the backend follows the weight suffix (`.pt` torch, `.onnx` onnxruntime, `.engine` tensorrt). `app-cs2/detect.py` runs offline video detection on those same backends (letterbox whole-frame view; `config.onnxChoice` drives the engine). `app-cs2/aimbot/` holds capture, driver, preprocess, nms, targeting, loop, engine loader and backends. `app-cs2/config.py` is the only runtime config.
+- `app-cs2/` — the runtime. Single entry `app-cs2/main.py`; the backend follows the weight suffix (`.pt` torch, `.onnx` onnxruntime, `.engine` tensorrt). `app-cs2/detect.py` runs offline video detection on those same backends (letterbox whole-frame view; `config.onnxChoice` drives the engine). `app-cs2/aimbot/` holds capture, driver, preprocess, nms, targeting, loop, engine loader and backends. `app-cs2/config.py` is the only runtime config. `app-cs2/weights/` holds the exported models (a locally built `.engine` plus its `.onnx` source).
 - `train/` — full YOLOv5 v7.0 training stack: `train.py`, `val.py`, `export.py`, `models/`, `utils/`, `data/`. Kept from upstream plus local patches listed below. YOLOv11 is trained with the `ultralytics` package instead (see docs/TRAINING.md §5) and exported with `train/export_yolo11.py`.
-- `weights/` — exported models. `docs/` — RUN / TRAINING / EXPORT guides (Chinese).
+- `app-cs2/weights/` — exported models. `docs/` — RUN / TRAINING / EXPORT guides (Chinese).
 
 The only cross-tree dependency: `app-cs2/aimbot/backends/torch_backend.py` puts `train/` on `sys.path` while a `.pt` checkpoint unpickles (the checkpoint references `models.yolo` classes); nothing else crosses.
 
@@ -20,7 +20,7 @@ The only cross-tree dependency: `app-cs2/aimbot/backends/torch_backend.py` puts 
 
 `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` builds a Python 3.11 venv (system Python is 3.14, no torch/tensorrt wheels) with torch 2.11 cu128, onnxruntime-gpu 1.23 (last CUDA 12 build; 1.24+ needs CUDA 13 and cannot share the process), tensorrt-cu12 11, plus `requirements.txt` and `train/requirements.txt`.
 
-- `.\.venv\Scripts\python.exe app-cs2\main.py --weights weights\cs2\xiaozhen.engine` — default when `--weights` is omitted
+- `.\.venv\Scripts\python.exe app-cs2\main.py --weights app-cs2\weights\10w-v5-320-16.engine` — default when `--weights` is omitted
 - `.onnx` provider comes from `onnxChoice` in `app-cs2/config.py` (1=CPU, 2=DirectML, 3=CUDA, 4=OpenVINO AUTO — Intel iGPU/NPU/CPU, fastest without NVIDIA; ORT pins 8 intra-op threads on CPU)
 - Training: see `docs/TRAINING.md`; export pt→onnx→engine: `docs/EXPORT.md`
 
@@ -29,7 +29,7 @@ Runtime controls: CAPS_LOCK (`0x14`) toggles aiming; quit key is `aaQuitKey` in 
 ## Runtime architecture (app-cs2/)
 
 - `capture.py` — window picker (titled windows only), up to 10 activate retries, bettercam on the centered `screenShotWidth × screenShotHeight` region, RGB, `max_buffer_len=64`. Returns `(camera, cx, cy)`.
-- `driver.py` — pluggable mouse drivers, picked by `mouse_driver` in config: `dll` (default; `native/mouse_driver.dll` built from `native/mouse_driver.c` by `scripts/build_dll.ps1`, SendInput in C with sub-pixel remainder accumulation and an optional `dll_timer_ms` timer-resolution bump — see docs/DRIVER.md) or `logitech` (`native/logitech.driver.dll` via ctypes; needs GHUB/LGS running or moves are no-ops). `DllDriver` exposes `close()`; `main.py` calls it on exit.
+- `driver.py` — pluggable mouse drivers, picked by `mouse_driver` in config: `dll` (default; `native/mouse_driver.dll` vendored prebuilt — rebuild per docs/DRIVER.md after changing `native/mouse_driver.c`, SendInput in C with sub-pixel remainder accumulation and an optional `dll_timer_ms` timer-resolution bump — see docs/DRIVER.md) or `logitech` (`native/logitech.driver.dll` via ctypes; needs GHUB/LGS running or moves are no-ops). `DllDriver` exposes `close()`; `main.py` calls it on exit.
 - `preprocess.py` — `CudaUploader`: one pinned staging buffer + one persistent device input, single async HtoD, cast + /255 on the GPU (an event guards the pinned buffer from in-flight rewrites); host providers write into a preallocated feed array.
 - `nms.py` — single-frame NMS in two halves: the device reduces the prediction to a fixed top-64 slab (mul/max/topk/gather, no data-dependent shapes, no sync), one D2H moves the slab, then threshold + class filter + class-agnostic greedy NMS run on the host. Returns one `(n, 6)` cpu tensor. Accepts both output layouts — YOLOv5 `(1, anchors, 5+nc)` with objectness and YOLOv8/11 `(1, 4+nc, anchors)` without — auto-detected by shape.
 - `backends/` — `base.Detector` shared; `load_detector()` in this package's `__init__` is the one suffix-driven factory, shared by `main.py` and `detect.py` (modules import lazily); `OnnxDetector` uses IO binding on CUDA with a reused output buffer and pins ORT to 8 intra-op threads on the CPU provider (default oversubscribes: 35 ms → 4–16 ms); `TensorRTDetector` drives `aimbot/engine.py`; `TorchDetector` loads `.pt` directly (no torch.hub; v11 checkpoints need the `ultralytics` package installed to unpickle; CPU path caps `torch.set_num_threads(8)`).
@@ -47,8 +47,8 @@ Runtime controls: CAPS_LOCK (`0x14`) toggles aiming; quit key is `aaQuitKey` in 
 
 ## Known gotchas
 
-- `.engine` files are GPU-architecture-bound; TensorRT 11 still deserializes 8.x/10 engines.
+- `.engine` files are bound to the building GPU's architecture AND TensorRT version. The former `weights` engines were built elsewhere (old TRT, sm50/70/80 kernels, no sm86) and all failed to deserialize in TRT 11 ("old deserialization call on a newer plan file") — they were deleted; rebuild from the `.onnx` with `train/export.py --include engine --half`.
 - `confidence` in `app-cs2/config.py` (0.75) is tuned for YOLOv5's obj×cls scores. YOLOv11 confidences are raw class probabilities (higher for the same detection) — retune, start around 0.45–0.55.
 - YOLOv11 checkpoints must keep the class order 0=CT body, 1=CT head, 2=T body, 3=T head — `config.CT`/`config.T` pick the team on every backend (both on or both off = all classes).
 - `train.py` auto-downloads weights/datasets on first use (coco128 smoke test in TRAINING.md).
-- `app-cs2/main.py` chdirs to the repo root so `weights/` paths resolve from anywhere.
+- `app-cs2/main.py` chdirs to the repo root so `weights` paths resolve from anywhere.

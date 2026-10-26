@@ -1,7 +1,7 @@
 """Offline video detection on the runtime backends — same engines as main.py.
 
     .\\.venv\\Scripts\\python.exe app-cs2\\detect.py --source video.mp4
-    ... --weights weights\\cs2\\xxx.engine --conf 0.75 --vid-stride 2
+    ... --weights app-cs2\\weights\\xxx.engine --conf 0.75 --vid-stride 2
 
 The weight suffix picks the backend (.pt torch / .onnx onnxruntime /
 .engine tensorrt) and config.onnxChoice picks the ONNX engine (4 =
@@ -63,7 +63,7 @@ def letterbox(frame, h, w):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', required=True, help='video file')
-    parser.add_argument('--weights', default='weights/cs2/10w-v5-320-16.onnx')
+    parser.add_argument('--weights', default='app-cs2/weights/10w-v5-320-16.onnx')
     parser.add_argument('--conf', type=float, default=default_conf)
     parser.add_argument('--iou', type=float, default=default_iou)
     parser.add_argument('--vid-stride', type=int, default=1, help='run every Nth frame')

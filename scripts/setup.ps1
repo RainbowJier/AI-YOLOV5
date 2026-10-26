@@ -5,7 +5,7 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 #
 # Then:
-#   .\.venv\Scripts\python.exe app-cs2\main.py --weights weights\cs2\xiaozhen.engine
+#   .\.venv\Scripts\python.exe app-cs2\main.py --weights app-cs2\weights\10w-v5-320-16.engine
 #   .\.venv\Scripts\python.exe train\train.py --data coco128.yaml --img 320
 #
 # 本机（2026-10-26）：D 盘已满，装不下 ~7GB 的 torch。.venv 是指向
@@ -44,20 +44,10 @@ uv pip install --python .venv --index-url $Tuna `
 uv pip install --python .venv --index-url $Tuna -r requirements.txt -r train\requirements.txt
 
 # NVIDIA-only extras: .onnx with onnxChoice = 3, and .engine on TensorRT 11.
-# tensorrt-cu12 11 still deserializes 8.x engines, so existing weights keep working.
+# .engine binds to the building GPU arch and TRT version; rebuild from the
+# .onnx per docs/EXPORT.md when either changes.
 uv pip install --python .venv --index-url $Tuna "onnxruntime-gpu>=1.23,<1.24" "tensorrt-cu12>=11,<12" cuda-python
-
-# Native mouse driver DLL (config.mouse_driver = "dll"). Best-effort: without
-# the MSVC Build Tools, build it later (scripts\build_dll.ps1) or switch
-# config.mouse_driver to 'logitech'.
-$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-if (Test-Path $vswhere) {
-    & powershell -ExecutionPolicy Bypass -File scripts\build_dll.ps1
-} else {
-    Write-Host "Skipping mouse_driver.dll build (MSVC Build Tools not found);"
-    Write-Host "run scripts\build_dll.ps1 later or set mouse_driver = 'logitech'."
-}
 
 Write-Host ""
 Write-Host "Done. Run:"
-Write-Host "  .\.venv\Scripts\python.exe app-cs2\main.py --weights weights\cs2\xiaozhen.engine"
+Write-Host "  .\.venv\Scripts\python.exe app-cs2\main.py --weights app-cs2\weights\10w-v5-320-16.engine"

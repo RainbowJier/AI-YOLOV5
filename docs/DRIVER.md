@@ -14,19 +14,15 @@
 - **可选定时器精度**：`config.dll_timer_ms = 1` 会在进程内 `timeBeginPeriod(1)`，
   让注入的输入更均匀；退出时由 `md_shutdown()` 还原。
 
-## 编译
+## 编译（仅重编时需要）
 
-需要 “Build Tools for Visual Studio” 的 C++ 工作负载 + Windows SDK（不需要完整 VS）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build_dll.ps1
-```
-
-脚本用 `vswhere` 找 MSVC，再 `VsDevCmd -arch=x64` 载入环境后调用（中间产物落在
-`%TEMP%`，仓库根目录不留 .obj/.lib/.exp）：
+`mouse_driver.dll` 已随仓库自带，平时无需编译。改了 `mouse_driver.c` 才需要重编：
+需要 “Build Tools for Visual Studio” 的 C++ 工作负载 + Windows SDK（不需要完整 VS）。
+从开始菜单打开 “x64 Native Tools Command Prompt for VS”（载入 MSVC + SDK 环境），
+在仓库根目录执行（中间产物落 `%TEMP%`，仓库里不留 .obj/.lib/.exp）：
 
 ```bat
-cl /nologo /LD /O2 /W4 /EHsc /DNDEBUG app-cs2\native\mouse_driver.c /link /OUT:app-cs2\native\mouse_driver.dll user32.lib winmm.lib
+cl /nologo /LD /O2 /W4 /EHsc /DNDEBUG app-cs2\native\mouse_driver.c /Fo"%TEMP%\mouse_driver.obj" /link /OUT:app-cs2\native\mouse_driver.dll /IMPLIB:"%TEMP%\mouse_driver.lib" user32.lib winmm.lib
 ```
 
 忘了链 `user32.lib` 会报 `LNK2019: __imp_SendInput`；源文件保持纯 ASCII，否则
@@ -48,5 +44,5 @@ cl /nologo /LD /O2 /W4 /EHsc /DNDEBUG app-cs2\native\mouse_driver.c /link /OUT:a
 
 ## 排查
 
-- 启动打印 `DLL file not found`：还没编译，或 DLL 不在 `app-cs2/native/`。
+- 启动打印 `DLL file not found`：`app-cs2/native/mouse_driver.dll` 缺失或损坏，按上文重编，或把 `config.mouse_driver` 换成 `logitech`。
 - 鼠标不动但 `ok` 为真：确认 Caps Lock、`aim_range`、以及游戏是否以前台窗口接收输入。
