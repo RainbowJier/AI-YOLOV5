@@ -105,6 +105,12 @@ def main():
         ok, frame = cap.read()
         if not ok:
             break
+        if n_seen == 0:  # letterbox params, fixed for the whole video
+            ih, iw = frame.shape[:2]
+            scale = min(mh / ih, mw / iw)
+            pad_top, pad_left = (mh - round(ih * scale)) // 2, (mw - round(iw * scale)) // 2
+            if writer is None:
+                writer = cv2.VideoWriter(out_mp4, cv2.VideoWriter_fourcc(*'mp4v'), fps_in, (iw, ih))
         if n_seen % args.vid_stride:
             n_seen += 1
             continue
@@ -124,19 +130,21 @@ def main():
 
         rows = det.cpu().tolist() if det.numel() else []
         n_det += len(rows)
-        canvas = letterbox(frame, mh, mw)
+        # Draw on the full-resolution frame: boxes map back out of the
+        # letterbox (model coords -> original pixels), so the output video
+        # keeps the source quality instead of the 320x320 model view.
         for x1, y1, x2, y2, conf, cls_id in rows:
+            p1 = (int((x1 - pad_left) / scale), int((y1 - pad_top) / scale))
+            p2 = (int((x2 - pad_left) / scale), int((y2 - pad_top) / scale))
             label = '{} {:.0f}%'.format('Body' if cls_id in (0, 2) else 'Head', conf * 100)
-            cv2.rectangle(canvas, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 1)
-            cv2.putText(canvas, label, (int(x1), max(int(y1) - 4, 12)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+            cv2.rectangle(frame, p1, p2, (0, 255, 0), 2)
+            cv2.putText(frame, label, (p1[0], max(p1[1] - 6, 14)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-        if writer is None:
-            writer = cv2.VideoWriter(out_mp4, cv2.VideoWriter_fourcc(*'mp4v'), fps_in, (mw, mh))
-        writer.write(canvas)
+        writer.write(frame)
         if rows and saved < _SNAPSHOTS:
             cv2.imwrite(os.path.join(os.path.dirname(args.source) or '.',
-                        '{}_det_{}.png'.format(stem, n_seen)), canvas)
+                        '{}_det_{}.png'.format(stem, n_seen)), frame)
             saved += 1
         total_ms = (time.perf_counter() - start) * 1000
 
