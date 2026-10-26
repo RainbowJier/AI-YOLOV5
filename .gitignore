@@ -8,6 +8,7 @@ venv/
 
 # runtime artifacts
 images/
+mp4/
 test*
 
 # training artifacts
@@ -19,5 +20,6 @@ train/**/*.pt
 # wheels that used to live in the repo root
 *.whl
 
-# built from app-cs2/native/mouse_driver.c by scripts/build_dll.ps1
-app-cs2/native/*.dll
+# built from app-cs2/native/mouse_driver.c by scripts/build_dll.ps1;
+# logitech.driver.dll there is vendored and stays tracked
+app-cs2/native/mouse_driver.dll

@@ -3,7 +3,7 @@
 - 'dll'       native/mouse_driver.dll built from native/mouse_driver.c;
   relative SendInput inside C, keeps sub-pixel leftovers, and can raise
   the process timer resolution. Brand-agnostic.
-- 'logitech'  GHUB / LGS relative driver (logitech.driver.dll), the
+- 'logitech'  GHUB / LGS relative driver (native/logitech.driver.dll), the
   original path; needs Logitech software running.
 """
 
@@ -21,7 +21,7 @@ except ImportError:
 class LogitechDriver:
     def __init__(self, dll_path=None):
         if dll_path is None:
-            dll_path = os.path.join(_ROOT, 'logitech.driver.dll')
+            dll_path = os.path.join(_ROOT, 'native', 'logitech.driver.dll')
         self._ok = False
         try:
             self._driver = ctypes.CDLL(dll_path)
