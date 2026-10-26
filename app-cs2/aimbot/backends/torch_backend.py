@@ -11,7 +11,7 @@ import torch
 
 from aimbot.backends.base import Detector
 from aimbot.nms import nms
-from aimbot.preprocess import frame_to_cuda, frame_to_numpy
+from aimbot.preprocess import CudaUploader, frame_to_numpy
 from config import confidence, iou
 
 # Checkpoints saved on Linux store PosixPath; make them loadable on Windows.
@@ -43,17 +43,22 @@ class TorchDetector(Detector):
             # Same oversubscription story as the ORT backend: 18 threads
             # measured 46 ms on this CPU, 8 threads 38 ms.
             torch.set_num_threads(8)
+        else:
+            # Static shapes: cudnn autotunes the conv algos once, up front.
+            torch.backends.cudnn.benchmark = True
         self.model = _load(weights)
         if self.cuda:
             self.model = self.model.half().cuda()
+            self.uploader = CudaUploader(half=True)
 
     def infer(self, frame):
-        if self.cuda:
-            im = frame_to_cuda(frame, half=True)
-        else:
-            im = torch.from_numpy(frame_to_numpy(frame, half=False))
-        with torch.no_grad():
-            pred = self.model(im)
-        if isinstance(pred, (list, tuple)):
-            pred = pred[0]
-        return nms(pred, confidence, iou, max_det=10)
+        # inference_mode all the way through the NMS: the in-place ops on
+        # the model output would be rejected outside the mode.
+        with torch.inference_mode():
+            if self.cuda:
+                pred = self.model(self.uploader.upload(frame))
+            else:
+                pred = self.model(torch.from_numpy(frame_to_numpy(frame, half=False)))
+            if isinstance(pred, (list, tuple)):
+                pred = pred[0]
+            return nms(pred, confidence, iou, max_det=10)

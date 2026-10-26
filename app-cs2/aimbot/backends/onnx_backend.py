@@ -5,7 +5,7 @@ import torch
 
 from aimbot.backends.base import Detector
 from aimbot.nms import nms
-from aimbot.preprocess import frame_to_cuda, frame_to_numpy
+from aimbot.preprocess import CudaUploader, frame_to_numpy
 from config import confidence, iou, onnxChoice, ov_device
 
 _PROVIDERS = {1: "CPUExecutionProvider", 2: "DmlExecutionProvider", 3: "CUDAExecutionProvider"}
@@ -17,6 +17,7 @@ class OnnxDetector(Detector):
         self.cuda = onnxChoice == 3
         self.provider = _PROVIDERS.get(onnxChoice)  # None on the OpenVINO path
         self.ov_request = None
+        self.shared_stream = False
 
         if onnxChoice == 4:
             # Intel OpenVINO: ov_device picks the Arc iGPU / NPU / CPU. Fastest
@@ -38,11 +39,37 @@ class OnnxDetector(Detector):
             # threads measured 35 ms on this CPU, 8 threads measured 16 ms.
             options.intra_op_num_threads = 8
             options.inter_op_num_threads = 1
-        self.session = ort.InferenceSession(weights, sess_options=options, providers=[self.provider])
+
+        if self.provider == "CUDAExecutionProvider":
+            cuda_opts = {
+                'device_id': 0,
+                # EXHAUSTIVE benchmarks every conv algo on the first frames;
+                # HEURISTIC picks immediately and lands within a few percent.
+                'cudnn_conv_algo_search': 'HEURISTIC',
+            }
+            # Run on torch's stream so upload, inference and NMS serialize
+            # with no sync in between (onnxruntime >= 1.15).
+            shared = dict(cuda_opts,
+                          has_user_compute_stream='1',
+                          user_compute_stream=str(torch.cuda.current_stream().cuda_stream))
+            try:
+                self.session = ort.InferenceSession(
+                    weights, sess_options=options, providers=[(self.provider, shared)])
+                self.shared_stream = True
+            except Exception:
+                self.session = ort.InferenceSession(
+                    weights, sess_options=options, providers=[(self.provider, cuda_opts)])
+
+            self.uploader = CudaUploader()
+        else:
+            self.session = ort.InferenceSession(
+                weights, sess_options=options, providers=[self.provider])
 
         meta = self.session.get_inputs()[0]
         self.input_name = meta.name
         self.half = meta.type == "tensor(float16)"
+        if self.cuda:
+            self.uploader.half = self.half
         self.io = self.session.io_binding() if self.cuda else None
         self._out = None
         print("模型的tensor：", meta.type)
@@ -54,23 +81,25 @@ class OnnxDetector(Detector):
             out = next(iter(self.ov_request.infer({self.input_name: feed}).values()))
             return nms(torch.from_numpy(out), confidence, iou, max_det=3)
         if self.cuda:
-            im = frame_to_cuda(frame, self.half)
-            out = self._bound(im)
+            out = self._bound(self.uploader.upload(frame))
         else:
             feed = frame_to_numpy(frame, self.half)
             out = torch.from_numpy(self.session.run(None, {self.input_name: feed})[0])
         return nms(out, confidence, iou, max_det=3)
 
     def _bound(self, im):
-        """Feed the CUDA tensor straight in. The output buffer is reused."""
+        """Feed the persistent CUDA input straight in. Output buffer reused."""
         if self._out is None or self._out.dtype != im.dtype:
-            self._out = torch.empty(self.session.get_outputs()[0].shape, dtype=im.dtype, device=im.device)
-        binding = self.io
-        binding.bind_input(self.input_name, 'cuda', 0, _ort_type(im.dtype),
+            meta = self.session.get_outputs()[0]
+            self._out = torch.empty(meta.shape, dtype=im.dtype, device=im.device)
+            self.io.bind_output(meta.name, 'cuda', 0, _ort_type(im.dtype),
+                                tuple(self._out.shape), self._out.data_ptr())
+        self.io.bind_input(self.input_name, 'cuda', 0, _ort_type(im.dtype),
                            tuple(im.shape), im.data_ptr())
-        binding.bind_output(self.session.get_outputs()[0].name, 'cuda', 0, _ort_type(im.dtype),
-                            tuple(self._out.shape), self._out.data_ptr())
-        self.session.run_with_iobinding(binding)
+        self.session.run_with_iobinding(self.io)
+        if not self.shared_stream:
+            # ORT ran on its own stream; the NMS below reads its output.
+            torch.cuda.current_stream().synchronize()
         return self._out
 
 

@@ -10,6 +10,9 @@ anchors) with no objectness -- the class score is the confidence. The
 layouts are told apart by shape (the anchor count, 2100 at 320x320, always
 dwarfs 4+nc), then both reduce to (box, scores) and share the thresholding
 and class-agnostic NMS below. Result: (n, 6) of xyxy, conf, cls.
+
+One sync per frame: on the GPU every boolean index costs a device sync,
+so the confidence and the class filter share a single mask.
 """
 
 import torch
@@ -28,20 +31,17 @@ def nms(prediction, conf_thres, iou_thres, classes=None, max_det=10):
         x = x.T
         scores = x[:, 4:]
     else:
-        # v5: (anchors, 5+nc); screen by objectness before the multiply.
-        x = x[x[:, 4] > conf_thres]
-        if x.shape[0] == 0:
-            return x.new_zeros((0, 6))
-        x[:, 5:] *= x[:, 4:5]
-        scores = x[:, 5:]
+        # v5: (anchors, 5+nc); confidence is objectness times class score.
+        # Out of place: the prediction buffer is reused by the backend, so
+        # an in-place multiply would corrupt the next frame's objectness.
+        scores = x[:, 5:] * x[:, 4:5]
 
     box = _xywh2xyxy(x[:, :4])
     conf, cls = scores.max(1, keepdim=True)
     keep = conf.view(-1) > conf_thres
-    box, conf, cls = box[keep], conf[keep], cls[keep]
     if classes is not None:
-        keep = (cls == classes).any(1)
-        box, conf, cls = box[keep], conf[keep], cls[keep]
+        keep &= (cls == classes).any(1)
+    box, conf, cls = box[keep], conf[keep], cls[keep]
     if box.shape[0] == 0:
         return x.new_zeros((0, 6))
 

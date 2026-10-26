@@ -93,18 +93,33 @@ class Engine:
         self.outputs = outputs
         self.addrs = OrderedDict((n, b.ptr) for n, b in bindings.items())
         self.input = next(n for n in bindings if n not in outputs)
+        self._static_set = False
 
     def __call__(self, im):
+        """Enqueue the engine on torch's current stream, without syncing.
+
+        The runtime keeps its buffers alive between calls, so the input
+        address only changes when the caller hands over a different tensor.
+        The single D2H of the surviving rows later on the same stream is
+        the sync point; a full synchronize here would just stall the
+        pipeline while the NMS and the pick could already be enqueued.
+        """
         expected = self.bindings[self.input].shape
         if tuple(im.shape) != expected:
             raise RuntimeError('engine expects {}, got {}'.format(expected, tuple(im.shape)))
-        self.addrs[self.input] = int(im.data_ptr())
-        if hasattr(self.context, 'execute_async_v3'):
-            for name, ptr in self.addrs.items():
-                self.context.set_tensor_address(name, ptr)
+        if hasattr(self.context, 'set_tensor_address'):
+            # TRT 8.5+/10/11 tensor API: addresses persist on the context.
+            if not self._static_set:
+                self.addrs[self.input] = int(im.data_ptr())
+                for name, ptr in self.addrs.items():
+                    self.context.set_tensor_address(name, ptr)
+                self._static_set = True
+            else:
+                self.context.set_tensor_address(self.input, int(im.data_ptr()))
             self.context.execute_async_v3(torch.cuda.current_stream().cuda_stream)
-            torch.cuda.current_stream().synchronize()
         else:
+            # TRT 8.x binding API: pass the address list on every call.
+            self.addrs[self.input] = int(im.data_ptr())
             self.context.execute_v2(list(self.addrs.values()))
         out = [self.bindings[name].data for name in self.outputs]
         return out[0] if len(out) == 1 else out

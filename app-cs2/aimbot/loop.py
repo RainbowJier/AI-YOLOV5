@@ -16,7 +16,8 @@ _LBUTTON = win32con.VK_LBUTTON
 def run(detector, camera, center):
     """Run until the quit key is pressed.
 
-    detector.infer(frame) returns the NMS tensor; detector.aim consumes it.
+    detector.infer(frame) returns the NMS tensor; detector.aim consumes it
+    and returns the host rows, which visuals draws without another sync.
     """
     cv2 = None
     if visuals:
@@ -31,9 +32,9 @@ def run(detector, camera, center):
         while win32api.GetAsyncKeyState(_QUIT) == 0:
             frame = get()
             if frame is None:
+                time.sleep(0.001)  # capture warm-up; don't spin a core
                 continue
-            det = infer(frame)
-            aim(det, center)
+            rows = aim(infer(frame), center)
 
             if capture and win32api.GetKeyState(_LBUTTON) < 0:
                 _save_frame(frame)
@@ -47,7 +48,7 @@ def run(detector, camera, center):
                 start = now
 
             if visuals:
-                _draw(cv2, frame, det)
+                _draw(cv2, frame, rows)
                 cv2.imshow('Live Feed', frame)
                 if (cv2.waitKey(1) & 0xFF) == ord('q'):
                     break
@@ -62,11 +63,11 @@ def _save_frame(frame):
     Image.fromarray(frame).save('images/' + stamp + '.png')
 
 
-def _draw(cv2, frame, det):
-    if det is None or det.shape[0] == 0:
+def _draw(cv2, frame, rows):
+    """Draw the host rows Detector.aim already transferred -- no device sync."""
+    if rows is None or rows.shape[0] == 0:
         return
-    rows = det.detach().cpu().tolist()
-    for x1, y1, x2, y2, conf, cls_id in rows:
+    for x1, y1, x2, y2, conf, cls_id in rows.tolist():
         start = (int(x2), int(y2))
         end = (int(x1), int(y1))
         label = "{}: {:.2f}%".format("Body" if cls_id in (0, 2) else "Head", conf * 100)

@@ -1,8 +1,6 @@
 """Shared detector wiring. Each backend only implements infer()."""
 
-import torch
-
-from aimbot.targeting import CLASS_IDS, aim_at, pick
+from aimbot.targeting import aim_at, closest, pick
 
 
 class Detector:
@@ -12,8 +10,15 @@ class Detector:
         self.speed = speed
 
     def aim(self, det, center):
-        # The config.CT / config.T team filter, enforced on every backend.
-        ids = torch.tensor(CLASS_IDS, device=det.device, dtype=det.dtype).view(1, -1)
-        target = pick(det, center, ids)
-        if target is not None:
-            aim_at(target, center, self.mouse, self.headshot_fraction, self.speed)
+        """Aim at the best box and return the host rows for visuals.
+
+        One D2H per frame: pick() transfers the NMS output once, the team
+        filter and the closest-box pick run on the host, and the returned
+        rows feed the preview without a second device sync.
+        """
+        rows = pick(det)
+        if rows is not None:
+            target = closest(rows, center)
+            if target is not None:
+                aim_at(target, center, self.mouse, self.headshot_fraction, self.speed)
+        return rows
