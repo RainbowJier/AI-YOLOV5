@@ -25,24 +25,11 @@ import cv2
 import numpy as np
 
 import config
+from aimbot.backends import load_detector
+from aimbot.targeting import class_label
 from config import confidence as default_conf, iou as default_iou
 
-_BACKENDS = {
-    '.pt': ('aimbot.backends.torch_backend', 'TorchDetector'),
-    '.onnx': ('aimbot.backends.onnx_backend', 'OnnxDetector'),
-    '.engine': ('aimbot.backends.tensorrt_backend', 'TensorRTDetector'),
-}
 _SNAPSHOTS = 6  # annotated pngs saved, frames that had detections
-
-
-def load_detector(weights):
-    suffix = os.path.splitext(weights)[1].lower()
-    try:
-        module_name, class_name = _BACKENDS[suffix]
-    except KeyError:
-        raise SystemExit('unsupported weights {}: expected .pt, .onnx or .engine'.format(weights))
-    module = __import__(module_name, fromlist=[class_name])
-    return getattr(module, class_name)(weights, mouse=None)
 
 
 def model_size(det):
@@ -83,7 +70,7 @@ def main():
     args = parser.parse_args()
 
     config.confidence, config.iou = args.conf, args.iou
-    detector = load_detector(args.weights)
+    detector = load_detector(args.weights, mouse=None)
     mh, mw = model_size(detector)
 
     cap = cv2.VideoCapture(args.source)
@@ -136,7 +123,7 @@ def main():
         for x1, y1, x2, y2, conf, cls_id in rows:
             p1 = (int((x1 - pad_left) / scale), int((y1 - pad_top) / scale))
             p2 = (int((x2 - pad_left) / scale), int((y2 - pad_top) / scale))
-            label = '{} {:.0f}%'.format('Body' if cls_id in (0, 2) else 'Head', conf * 100)
+            label = '{} {:.0f}%'.format(class_label(cls_id), conf * 100)
             cv2.rectangle(frame, p1, p2, (0, 255, 0), 2)
             cv2.putText(frame, label, (p1[0], max(p1[1] - 6, 14)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
@@ -162,4 +149,5 @@ def main():
     print('output: ' + out_mp4)
 
 
-main()
+if __name__ == '__main__':
+    main()

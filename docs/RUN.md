@@ -49,7 +49,21 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 瞄准逻辑：选离准星最近的框，距离不超过 `aim_range` 才动；未开火瞄头部偏移点，按住左键时瞄框中心并加速。详见 `app-cs2/config.py` 的注释和根 README。
 
-## 5. 视频检测（离线）
+## 5. 性能与调优
+
+每帧热路径（GPU 模式）：bettercam 采集 → 帧写入锁页内存，一次异步上传到常驻显存缓冲 → 引擎直读 → GPU 把预测归约成 top-64 定长候选切片 → 一次回传 → host 上做阈值、队伍过滤、NMS、选目标。全程无逐帧分配、无多余设备同步。
+
+| 想要 | 改哪里 |
+| --- | --- |
+| 抬高 CPS 上限 | `config.py` 的 `target_fps`——CPS 封顶等于采集帧率，游戏 144Hz 就填 144 |
+| 实战再省 1-3ms/帧 | `config.py` 的 `visuals = False`（预览窗口整体关闭） |
+| 摇鼠更稳 | `config.py` 的 `dll_timer_ms = 1`（默认已开） |
+| 换推理引擎 | 直接换 `--weights` 后缀：`.engine` > `.onnx`(CUDA) > `.pt` |
+| 只打一方 | `config.py` 的 `CT` / `T`（host 端过滤，所有后端生效） |
+
+诊断看终端每秒打印的 CPS：**CPS ≈ `target_fps` 说明瓶颈在采集供给而不是推理**，此时继续优化推理没有意义，调大 `target_fps` 才有用。
+
+## 6. 视频检测（离线）
 
 用和实时完全相同的后端跑一个视频文件，检查模型效果：
 
@@ -68,4 +82,4 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 - **选不中游戏窗口。** Windows 的 SetForegroundWindow 限制。提示重试时手动切到游戏再等它试完。
 - **ONNX 报没有对应 Provider。** `onnxChoice=3` 需要 `onnxruntime-gpu`（1.23），`2` 需要 `onnxruntime-directml`。装了哪个就选哪个。
 - **engine 加载失败。** 引擎和 GPU 架构绑定，换卡要用 `.pt` 重新导出（见 EXPORT.md）。
-- **CPS 很低。** 优先换 `.engine`；确认截取区域是 320×320 且模型导出尺寸一致。
+- **CPS 很低。** 先确认没有顶到采集上限：CPS ≈ `target_fps` 时调大它才有用。然后优先换 `.engine`；确认截取区域是 320×320 且模型导出尺寸一致。

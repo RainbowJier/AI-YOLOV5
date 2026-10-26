@@ -21,6 +21,12 @@ _IDS = ([0, 1] if config.CT else []) + ([2, 3] if config.T else [])
 CLASS_IDS = _IDS or [0, 1, 2, 3]
 _ALL_CLASSES = len(CLASS_IDS) == 4
 
+
+def class_label(cls_id):
+    """'Head' for the head classes (1, 3), else 'Body' — shared by the
+    live preview and detect.py annotations."""
+    return 'Head' if cls_id in (1, 3) else 'Body'
+
 _INV_SMOOTH = 1.0 / config.lock_smooth
 _INV_SEN = 1.0 / config.lock_sen
 _AIM_RANGE_SQ = config.aim_range * config.aim_range

@@ -7,6 +7,7 @@ import time
 import win32api
 import win32con
 
+from aimbot.targeting import class_label
 from config import aaQuitKey, capture, cpsDisplay, visuals
 
 _QUIT = ord(aaQuitKey)
@@ -74,7 +75,7 @@ def _draw(cv2, frame, rows):
     for x1, y1, x2, y2, conf, cls_id in rows.tolist():
         start = (int(x2), int(y2))
         end = (int(x1), int(y1))
-        label = "{}: {:.2f}%".format("Body" if cls_id in (0, 2) else "Head", conf * 100)
+        label = "{}: {:.2f}%".format(class_label(cls_id), conf * 100)
         cv2.rectangle(frame, start, end, (0, 255, 0), 2)
         text_y = start[1] - 15 if start[1] - 15 > 15 else start[1] + 15
         cv2.putText(frame, label, (start[0], text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
