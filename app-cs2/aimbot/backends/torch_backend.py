@@ -39,6 +39,10 @@ class TorchDetector(Detector):
     def __init__(self, weights, mouse, headshot_fraction=0.2, speed=2.6):
         super().__init__(mouse, headshot_fraction, speed)
         self.cuda = torch.cuda.is_available()
+        if not self.cuda:
+            # Same oversubscription story as the ORT backend: 18 threads
+            # measured 46 ms on this CPU, 8 threads 38 ms.
+            torch.set_num_threads(8)
         self.model = _load(weights)
         if self.cuda:
             self.model = self.model.half().cuda()

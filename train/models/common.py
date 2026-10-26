@@ -357,14 +357,15 @@ class DetectMultiBackend(nn.Module):
         #   TensorFlow Lite:                *.tflite
         #   TensorFlow Edge TPU:            *_edgetpu.tflite
         #   PaddlePaddle:                   *_paddle_model
-        from models.experimental import attempt_download, attempt_load  # scoped to avoid circular import
+        from models.experimental import attempt_load  # scoped to avoid circular import
 
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
-        pt, engine = w.endswith('.pt'), w.endswith('.engine')
-        if not (pt or engine):
-            raise NotImplementedError(f'ERROR: {w} is not a .pt or .engine file')
-        fp16 &= pt or engine
+        pt, onnx, engine = w.endswith('.pt'), w.endswith('.onnx'), w.endswith('.engine')
+        triton = False  # upstream detect.py queries model.triton; no triton server here
+        if not (pt or onnx or engine):
+            raise NotImplementedError(f'ERROR: {w} is not a .pt, .onnx or .engine file')
+        fp16 &= pt or engine or onnx
         stride = 32  # default stride
         cuda = torch.cuda.is_available() and device.type != 'cpu'
 
@@ -410,7 +411,18 @@ class DetectMultiBackend(nn.Module):
                 bindings[name] = Binding(name, dtype, shape, im, int(im.data_ptr()))
             binding_addrs = OrderedDict((n, d.ptr) for n, d in bindings.items())
             batch_size = next(iter(bindings.values())).shape[0]  # dynamic: max batch size
-        if not (pt or engine):
+        elif onnx:  # ONNX Runtime
+            LOGGER.info(f'Loading {w} for ONNX Runtime inference...')
+            import onnxruntime
+            options = onnxruntime.SessionOptions()
+            options.intra_op_num_threads = 8  # default oversubscribes: see app-cs2 backends
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda else ['CPUExecutionProvider']
+            session = onnxruntime.InferenceSession(w, sess_options=options, providers=providers)
+            output_names = [x.name for x in session.get_outputs()]
+            meta = session.get_modelmeta().custom_metadata_map  # metadata
+            if 'stride' in meta:
+                stride, names = int(meta['stride']), eval(meta['names'])
+        if not (pt or onnx or engine):
             raise NotImplementedError(f'ERROR: {w} is not a supported format')
 
         # class names
@@ -447,6 +459,12 @@ class DetectMultiBackend(nn.Module):
             else:
                 self.context.execute_v2(list(self.binding_addrs.values()))
             y = [self.bindings[x].data for x in sorted(self.output_names)]
+        elif self.onnx:  # ONNX Runtime
+            im = im.cpu().numpy()  # torch to numpy
+            x = self.session.get_inputs()[0]
+            if x.type == 'tensor(float16)':
+                im = im.astype(np.float16)  # fp16 exports also run on the CPU provider
+            y = self.session.run(self.output_names, {x.name: im})
         if isinstance(y, (list, tuple)):
             return self.from_numpy(y[0]) if len(y) == 1 else [self.from_numpy(x) for x in y]
         else:
@@ -457,7 +475,7 @@ class DetectMultiBackend(nn.Module):
 
     def warmup(self, imgsz=(1, 3, 640, 640)):
         # Warmup model by running inference once
-        if (self.pt or self.engine) and self.device.type != 'cpu':
+        if (self.pt or self.onnx or self.engine) and self.device.type != 'cpu':
             im = torch.empty(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)  # input
             self.forward(im)  # warmup
 

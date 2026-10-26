@@ -1,11 +1,11 @@
-# Environment for both app/ (runtime) and train/ (training). The repo targets
+# Environment for both app-cs2/ (runtime) and train/ (training). The repo targets
 # Python 3.11; the system Python here is 3.14, which torch and TensorRT do not
 # ship wheels for, so this builds a dedicated 3.11 venv with uv.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 #
 # Then:
-#   .\.venv\Scripts\python.exe app\main.py --weights weights\cs2\xiaozhen.engine
+#   .\.venv\Scripts\python.exe app-cs2\main.py --weights weights\cs2\xiaozhen.engine
 #   .\.venv\Scripts\python.exe train\train.py --data coco128.yaml --img 320
 
 $ErrorActionPreference = 'Stop'
@@ -24,7 +24,7 @@ uv venv --python 3.11 .venv
 # CUDA 13 and cannot share a process with this torch, so it is pinned below 1.24.
 uv pip install --python .venv torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
-# Shared runtime packages (app/) and training packages (train/).
+# Shared runtime packages (app-cs2/) and training packages (train/).
 uv pip install --python .venv -r requirements.txt -r train\requirements.txt
 
 # NVIDIA-only extras: .onnx with onnxChoice = 3, and .engine on TensorRT 11.
@@ -33,4 +33,4 @@ uv pip install --python .venv "onnxruntime-gpu>=1.23,<1.24" "tensorrt-cu12>=11,<
 
 Write-Host ""
 Write-Host "Done. Run:"
-Write-Host "  .\.venv\Scripts\python.exe app\main.py --weights weights\cs2\xiaozhen.engine"
+Write-Host "  .\.venv\Scripts\python.exe app-cs2\main.py --weights weights\cs2\xiaozhen.engine"

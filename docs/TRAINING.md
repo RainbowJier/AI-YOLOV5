@@ -22,7 +22,7 @@ datasets/mygame/
     val/     *.txt
 ```
 
-CS2 模型的类别约定（`app/` 运行时按这个读）：
+CS2 模型的类别约定（`app-cs2/` 运行时按这个读）：
 
 | id | 类别 |
 | --- | --- |
@@ -55,7 +55,7 @@ names: ['ct-body', 'ct-head', 't-body', 't-head']
   --device 0
 ```
 
-- `--img 320`：`app/config.py` 的截取区域是 320×320，训练和推理保持同尺寸效果最好。
+- `--img 320`：`app-cs2/config.py` 的截取区域是 320×320，训练和推理保持同尺寸效果最好。
 - `--weights yolov5s.pt`：从预训练权重微调（推荐）。从零训练改为 `--weights '' --cfg yolov5s.yaml`。
 - `--device 0` 指定第一块 GPU，多卡用 `--device 0,1`。
 - 显存不够先降 `--batch`，或 `--batch -1` 自动探测。
@@ -64,7 +64,7 @@ names: ['ct-body', 'ct-head', 't-body', 't-head']
 
 ## 4. 交付给运行时
 
-`best.pt` 可以直接用（`app/main.py --weights best.pt`，走 PyTorch 后端），但要在实战帧率里跑，先按 [EXPORT.md](EXPORT.md) 转成 `.onnx` 或 `.engine`，速度差距是数倍到数十倍。
+`best.pt` 可以直接用（`app-cs2/main.py --weights best.pt`，走 PyTorch 后端），但要在实战帧率里跑，先按 [EXPORT.md](EXPORT.md) 转成 `.onnx` 或 `.engine`，速度差距是数倍到数十倍。
 
 ## 5. 用 YOLOv11 训练
 
@@ -77,7 +77,7 @@ YOLOv5 流程照旧可用；想换 YOLOv11（ultralytics，精度更高、小目
 - 预训练 `yolo11s.pt` 首跑会自动下载；网络慢就手动下载后放到仓库根目录，`model=` 写本地路径。
 - 档位选择：`yolo11n.pt` 比 yolov5s 更快且精度更高（拉 CPS 用）；`yolo11s.pt` 对标 yolov5s（精度优先用）。
 - 产物在 `runs/detect/train*/weights/best.pt`，按 [EXPORT.md](EXPORT.md) 第 4 节导出（v11 不能用 `train/export.py`）。
-- v11 没有 objectness 分数，置信度语义不同，训完把 `app/config.py` 的 `confidence` 从 `0.45`–`0.55` 起重新调。
+- v11 没有 objectness 分数，置信度语义不同，训完把 `app-cs2/config.py` 的 `confidence` 从 `0.45`–`0.55` 起重新调。
 
 ## 常见问题
 

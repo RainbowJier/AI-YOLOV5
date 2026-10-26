@@ -1,6 +1,6 @@
 # pt 格式转换
 
-把训练出的 `.pt` 转成 `.onnx` 和 `.engine`（TensorRT 11），供 `app/main.py` 按 GPU 选最快后端。转换脚本在 `train/export.py`，命令都在仓库根目录执行，NVIDIA 路径需要 CUDA 可用（`--device 0`）。
+把训练出的 `.pt` 转成 `.onnx` 和 `.engine`（TensorRT 11），供 `app-cs2/main.py` 按 GPU 选最快后端。转换脚本在 `train/export.py`，命令都在仓库根目录执行，NVIDIA 路径需要 CUDA 可用（`--device 0`）。
 
 ```
 .pt  --include onnx-->  .onnx   ONNX Runtime，CPU / AMD / NVIDIA
@@ -16,11 +16,11 @@
 ```
 
 - `--half`：FP16，体积和耗时减半，`onnxChoice=3`（CUDA）直接受益。
-- `--imgsz 320 320`：和 `app/config.py` 的截取区域一致，导出即最终输入尺寸。
+- `--imgsz 320 320`：和 `app-cs2/config.py` 的截取区域一致，导出即最终输入尺寸。
 - `--simplify`：可选，用 onnx-simplifier 化简图结构。
 - 产物与源文件同目录同名：`best.onnx`。
 
-ONNX Runtime 的执行器由 `app/config.py` 的 `onnxChoice` 决定：`1` CPU、`2` DirectML（AMD）、`3` CUDA（NVIDIA）。
+ONNX Runtime 的执行器由 `app-cs2/config.py` 的 `onnxChoice` 决定：`1` CPU、`2` DirectML（AMD）、`3` CUDA（NVIDIA）。
 
 ## 2. onnx → engine（TensorRT 11）
 
@@ -43,7 +43,7 @@ ONNX Runtime 的执行器由 `app/config.py` 的 `onnxChoice` 决定：`1` CPU�
 ## 3. 验证
 
 ```powershell
-.\.venv\Scripts\python.exe app\main.py --weights train\runs\train\exp\weights\best.engine
+.\.venv\Scripts\python.exe app-cs2\main.py --weights train\runs\train\exp\weights\best.engine
 ```
 
 启动后先看终端打印的输入/输出 shape 是否是 `1×3×320×320`，进对局看 CPS 和命中是否正常。ONNX 同理，把后缀换掉即可，后端按后缀自动选择。
@@ -59,10 +59,10 @@ YOLOv11 的 `.pt`（ultralytics 训出，见 [TRAINING.md](TRAINING.md) 第 5 �
 ```
 
 - `--include` 可以同时给 `onnx` 和 `engine`，一条命令跑完。
-- `--imgsz 320` 同样要和 `app/config.py` 的截取区域一致。
+- `--imgsz 320` 同样要和 `app-cs2/config.py` 的截取区域一致。
 - 引擎构建照样要十几分钟；`.engine` 与 GPU 架构和 TensorRT 大版本绑定，规则和上面相同。
 
-v11 导出的输出是 `(1, 4+nc, anchors)`，没有 objectness 分数，和 YOLOv5 的 `(1, anchors, 5+nc)` 不同；`app/aimbot/nms.py` 按形状自动识别，运行时不用任何开关。注意 v11 的置信度就是类别分数（没有 obj 相乘，数值普遍比 v5 高），`app/config.py` 的 `confidence = 0.75` 是按 v5 语义调的，换 v11 后要重调，建议从 `0.45`–`0.55` 起试。
+v11 导出的输出是 `(1, 4+nc, anchors)`，没有 objectness 分数，和 YOLOv5 的 `(1, anchors, 5+nc)` 不同；`app-cs2/aimbot/nms.py` 按形状自动识别，运行时不用任何开关。注意 v11 的置信度就是类别分数（没有 obj 相乘，数值普遍比 v5 高），`app-cs2/config.py` 的 `confidence = 0.75` 是按 v5 语义调的，换 v11 后要重调，建议从 `0.45`–`0.55` 起试。
 
 ## 常见问题
 

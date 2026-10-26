@@ -3,17 +3,19 @@
 screenShotHeight = 320
 screenShotWidth = 320
 
-# ONNX ONLY - Choose 1 of the 3 below
+# ONNX ONLY - Choose 1 of the 4 below
 # 1 - CPU
 # 2 - AMD
 # 3 - NVIDIA
-onnxChoice = 3
+# 4 - Intel OpenVINO（核显/NPU/CPU 自动挑，无 NVIDIA 独显时最快；
+#     注意核显同时在渲染桌面/游戏时会有算力争夺）
+onnxChoice = 4
 #
-# CT = False
-# T = False
-# # #
 CT = True
-T = False
+T = True
+# # #
+# CT = True
+# T = False
 # #
 # CT = False
 # T = True
@@ -28,7 +30,6 @@ capture = False
 
 # fps
 target_fps = 110
-
 
 # lock幅度系数；若在桌面试用请调成1，在游戏中(csgo)则为灵敏度
 lock_sen = 1
@@ -48,10 +49,8 @@ cpsDisplay = True
 # Smarter selection of people
 centerOfScreen = True
 
-
 #########
 # 是否开启可视化窗口
 #########
 # Set to True if you want to get the visuals
-visuals = False
-
+visuals = True

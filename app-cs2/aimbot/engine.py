@@ -1,6 +1,6 @@
 """TensorRT engine loader.
 
-Kept inside the runtime so app/ does not import the training tree. Handles
+Kept inside the runtime so app-cs2/ does not import the training tree. Handles
 both the TensorRT 8 binding API and the TensorRT 10 tensor API, so an engine
 built with either one loads here.
 """

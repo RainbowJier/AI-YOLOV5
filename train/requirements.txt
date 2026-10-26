@@ -42,7 +42,7 @@ seaborn>=0.11.0
 # tritonclient[all]~=2.24.0
 
 # YOLOv11 (ultralytics) - train_yolo11 / export_yolo11.py, and running a v11
-# .pt in app/ (the torch backend unpickles its DetectionModel)
+# .pt in app-cs2/ (the torch backend unpickles its DetectionModel)
 ultralytics>=8.3,<9
 onnx>=1.14  # ultralytics ONNX export
 onnxslim  # graph simplification inside the ultralytics export

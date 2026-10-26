@@ -5,7 +5,7 @@ Windows 实时目标检测自瞄。截取游戏窗口中心区域，YOLOv5 推�
 仓库分成两个互不依赖的目录：
 
 ```
-app/     运行时。入口 app/main.py，后端按权重后缀选择（.pt / .onnx / .engine）
+app-cs2/     运行时。入口 app-cs2/main.py，后端按权重后缀选择（.pt / .onnx / .engine）
 train/   训练与格式转换。YOLOv5 v7.0 完整训练栈，train.py / val.py / export.py
 weights/ 已导出的模型
 docs/    RUN.md 启动 · TRAINING.md 训练 · EXPORT.md 格式转换
@@ -18,7 +18,7 @@ docs/    RUN.md 启动 · TRAINING.md 训练 · EXPORT.md 格式转换
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 # 2. 跑起来（默认 weights\cs2\xiaozhen.engine，TensorRT，最快）
-.\.venv\Scripts\python.exe app\main.py
+.\.venv\Scripts\python.exe app-cs2\main.py
 ```
 
 | 文档 | 内容 |
@@ -43,7 +43,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 - 未开火瞄头部偏移点（各后端比例：torch 0.2 / onnx 0.1 / tensorrt 0.32）；按住左键瞄框中心并加速 3.0/2.6。
 - 位移经 `atan` 平滑，`lock_smooth` 越大越慢，`lock_sen` 是灵敏度系数。
 
-配置全部在 `app/config.py`，改完重跑即生效。
+配置全部在 `app-cs2/config.py`，改完重跑即生效。
 
 ## 仓库里的权重
 

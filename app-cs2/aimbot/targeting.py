@@ -13,13 +13,10 @@ import win32con
 
 import config
 
-# 0 = CT body, 1 = CT head, 2 = T body, 3 = T head.
-_BODY = []
-if config.CT:
-    _BODY.append(0)
-if config.T:
-    _BODY.append(2)
-BODY_CLASS_IDS = _BODY or [0, 2]
+# 0 = CT body, 1 = CT head, 2 = T body, 3 = T head. config.CT / config.T pick
+# the team; both on (or both off) means every class competes.
+_IDS = ([0, 1] if config.CT else []) + ([2, 3] if config.T else [])
+CLASS_IDS = _IDS or [0, 1, 2, 3]
 
 _INV_SMOOTH = 1.0 / config.lock_smooth
 _INV_SEN = 1.0 / config.lock_sen
@@ -32,7 +29,7 @@ _CAPS = 0x14
 
 def class_filter(device):
     """Class ids as a column tensor, built once per detector."""
-    return torch.tensor(BODY_CLASS_IDS, device=device, dtype=torch.float32).view(1, -1)
+    return torch.tensor(CLASS_IDS, device=device, dtype=torch.float32).view(1, -1)
 
 
 def pick(det, center, classes=None):

@@ -1,6 +1,6 @@
 # 如何启动项目
 
-运行时代码全部在 `app/`，一个入口 `app/main.py`，后端按权重文件后缀自动选择：
+运行时代码全部在 `app-cs2/`，一个入口 `app-cs2/main.py`，后端按权重文件后缀自动选择：
 
 | `--weights` 后缀 | 后端 | 适用机器 |
 | --- | --- | --- |
@@ -18,19 +18,19 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 脚本创建 `.venv/`，装齐运行和训练两套依赖，CUDA 全家对齐到 12（torch 2.11 cu128、onnxruntime-gpu 1.23、tensorrt-cu12 11）。
 
-不跑 NVIDIA 路径的话，可以跳过脚本最后一组，只装 `requirements.txt`，并把 `app/config.py` 的 `onnxChoice` 改成 `1`（CPU）或 `2`（AMD）。
+不跑 NVIDIA 路径的话，可以跳过脚本最后一组，只装 `requirements.txt`，并把 `app-cs2/config.py` 的 `onnxChoice` 改成 `1`（CPU）、`2`（AMD）或 `4`（Intel OpenVINO，核显/NPU/CPU 自动挑，无 NVIDIA 独显时最快）。
 
 ## 2. 启动
 
 ```powershell
-.\.venv\Scripts\python.exe app\main.py --weights weights\cs2\xiaozhen.engine
+.\.venv\Scripts\python.exe app-cs2\main.py --weights weights\cs2\xiaozhen.engine
 ```
 
 不传 `--weights` 时默认就是上面这个引擎。其它选择：
 
 ```powershell
-.\.venv\Scripts\python.exe app\main.py --weights weights\sanjiaozhou\v1\320-FP16\sjz.onnx
-.\.venv\Scripts\python.exe app\main.py --weights weights\sanjiaozhou\v2\320-FP16\sjz_yolov5.pt
+.\.venv\Scripts\python.exe app-cs2\main.py --weights weights\sanjiaozhou\v1\320-FP16\sjz.onnx
+.\.venv\Scripts\python.exe app-cs2\main.py --weights weights\sanjiaozhou\v2\320-FP16\sjz_yolov5.pt
 ```
 
 自己训练/转换的模型看 [TRAINING.md](TRAINING.md) 和 [EXPORT.md](EXPORT.md)。权重可以是 YOLOv5 或 YOLOv11（ultralytics）训出来的，两者的输出格式不同，运行时按张量形状自动识别，不需要任何开关。
@@ -47,7 +47,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 | **P**（`aaQuitKey`） | 退出 |
 | `visuals = True` 时预览窗口里按 `q` | 退出 |
 
-瞄准逻辑：选离准星最近的框，距离不超过 `aim_range` 才动；未开火瞄头部偏移点，按住左键时瞄框中心并加速。详见 `app/config.py` 的注释和根 README。
+瞄准逻辑：选离准星最近的框，距离不超过 `aim_range` 才动；未开火瞄头部偏移点，按住左键时瞄框中心并加速。详见 `app-cs2/config.py` 的注释和根 README。
 
 ## 常见问题
 

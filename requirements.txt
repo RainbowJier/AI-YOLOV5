@@ -1,4 +1,4 @@
-# Shared app/ runtime. scripts/setup.ps1 installs this plus train/requirements.txt
+# Shared app-cs2/ runtime. scripts/setup.ps1 installs this plus train/requirements.txt
 # into the Python 3.11 venv, then pins the CUDA stack so torch, ONNX Runtime and
 # TensorRT all sit on CUDA 12 in one process.
 PyGetWindow
@@ -12,6 +12,7 @@ psutil
 bettercam
 Pillow
 onnxruntime-directml
+openvino  # onnxChoice=4, Intel iGPU/NPU/CPU; slow networks: --index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 # Pinned by scripts/setup.ps1, not here, because they come from different indexes:
 #   torch==2.11.* torchvision==0.26.*    --index-url https://download.pytorch.org/whl/cu128
