@@ -48,6 +48,22 @@ ONNX Runtime 的执行器由 `app/config.py` 的 `onnxChoice` 决定：`1` CPU�
 
 启动后先看终端打印的输入/输出 shape 是否是 `1×3×320×320`，进对局看 CPS 和命中是否正常。ONNX 同理，把后缀换掉即可，后端按后缀自动选择。
 
+## 4. YOLOv11 模型导出
+
+YOLOv11 的 `.pt`（ultralytics 训出，见 [TRAINING.md](TRAINING.md) 第 5 节）不走 `train/export.py`——那是 YOLOv5 的图，导不了 v11。用专门的脚本：
+
+```powershell
+.\.venv\Scripts\python.exe train\export_yolo11.py `
+  --weights runs\detect\train\weights\best.pt `
+  --include onnx engine --imgsz 320 --half --device 0
+```
+
+- `--include` 可以同时给 `onnx` 和 `engine`，一条命令跑完。
+- `--imgsz 320` 同样要和 `app/config.py` 的截取区域一致。
+- 引擎构建照样要十几分钟；`.engine` 与 GPU 架构和 TensorRT 大版本绑定，规则和上面相同。
+
+v11 导出的输出是 `(1, 4+nc, anchors)`，没有 objectness 分数，和 YOLOv5 的 `(1, anchors, 5+nc)` 不同；`app/aimbot/nms.py` 按形状自动识别，运行时不用任何开关。注意 v11 的置信度就是类别分数（没有 obj 相乘，数值普遍比 v5 高），`app/config.py` 的 `confidence = 0.75` 是按 v5 语义调的，换 v11 后要重调，建议从 `0.45`–`0.55` 起试。
+
 ## 常见问题
 
 - **`tensorrt` 导入失败。** 确认装的是 `tensorrt-cu12`（脚本已装），且 `pip list` 里版本是 10.x 或 11.x。

@@ -33,7 +33,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 .\.venv\Scripts\python.exe app\main.py --weights weights\sanjiaozhou\v2\320-FP16\sjz_yolov5.pt
 ```
 
-自己训练/转换的模型看 [TRAINING.md](TRAINING.md) 和 [EXPORT.md](EXPORT.md)。
+自己训练/转换的模型看 [TRAINING.md](TRAINING.md) 和 [EXPORT.md](EXPORT.md)。权重可以是 YOLOv5 或 YOLOv11（ultralytics）训出来的，两者的输出格式不同，运行时按张量形状自动识别，不需要任何开关。
 
 ## 3. 选窗口
 

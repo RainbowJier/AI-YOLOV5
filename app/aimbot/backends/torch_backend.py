@@ -21,6 +21,13 @@ _TRAIN = pathlib.Path(__file__).resolve().parents[3] / 'train'
 
 
 def _load(weights):
+    """Unpickle a .pt checkpoint straight into a model.
+
+    Works for both YOLOv5 and YOLOv11 checkpoints. A v11 checkpoint pickles
+    ultralytics classes, so the `ultralytics` package (train/requirements.txt)
+    must be installed; its eval forward returns (y, x) with y shaped
+    (1, 4+nc, anchors), which aimbot.nms detects by shape like any export.
+    """
     if str(_TRAIN) not in sys.path:
         sys.path.insert(0, str(_TRAIN))
     ckpt = torch.load(weights, map_location='cpu', weights_only=False)

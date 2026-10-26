@@ -66,6 +66,19 @@ names: ['ct-body', 'ct-head', 't-body', 't-head']
 
 `best.pt` 可以直接用（`app/main.py --weights best.pt`，走 PyTorch 后端），但要在实战帧率里跑，先按 [EXPORT.md](EXPORT.md) 转成 `.onnx` 或 `.engine`，速度差距是数倍到数十倍。
 
+## 5. 用 YOLOv11 训练
+
+YOLOv5 流程照旧可用；想换 YOLOv11（ultralytics，精度更高、小目标更好），数据集和 `mygame.yaml` 完全复用，**类别顺序必须保持 0=CT身体 1=CT头 2=T身体 3=T头**（运行时按 id 过滤）：
+
+```powershell
+.\.venv\Scripts\yolo.exe detect train model=yolo11s.pt data=train/data/mygame.yaml imgsz=320 batch=32 epochs=100 device=0
+```
+
+- 预训练 `yolo11s.pt` 首跑会自动下载；网络慢就手动下载后放到仓库根目录，`model=` 写本地路径。
+- 档位选择：`yolo11n.pt` 比 yolov5s 更快且精度更高（拉 CPS 用）；`yolo11s.pt` 对标 yolov5s（精度优先用）。
+- 产物在 `runs/detect/train*/weights/best.pt`，按 [EXPORT.md](EXPORT.md) 第 4 节导出（v11 不能用 `train/export.py`）。
+- v11 没有 objectness 分数，置信度语义不同，训完把 `app/config.py` 的 `confidence` 从 `0.45`–`0.55` 起重新调。
+
 ## 常见问题
 
 - **自动下载权重/数据集很慢或失败。** 手动下载后放进 `train/` 目录，或把 `--weights` 写成本地路径。
