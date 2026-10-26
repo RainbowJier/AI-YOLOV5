@@ -31,6 +31,17 @@ uv pip install --python .venv -r requirements.txt -r train\requirements.txt
 # tensorrt-cu12 11 still deserializes 8.x engines, so existing weights keep working.
 uv pip install --python .venv "onnxruntime-gpu>=1.23,<1.24" "tensorrt-cu12>=11,<12" cuda-python
 
+# Native mouse driver DLL (config.mouse_driver = "dll"). Best-effort: without
+# the MSVC Build Tools, build it later (scripts\build_dll.ps1) or switch
+# config.mouse_driver to 'logitech'.
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+if (Test-Path $vswhere) {
+    & powershell -ExecutionPolicy Bypass -File scripts\build_dll.ps1
+} else {
+    Write-Host "Skipping mouse_driver.dll build (MSVC Build Tools not found);"
+    Write-Host "run scripts\build_dll.ps1 later or set mouse_driver = 'logitech'."
+}
+
 Write-Host ""
 Write-Host "Done. Run:"
 Write-Host "  .\.venv\Scripts\python.exe app-cs2\main.py --weights weights\cs2\xiaozhen.engine"

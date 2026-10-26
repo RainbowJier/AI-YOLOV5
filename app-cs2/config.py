@@ -48,9 +48,14 @@ iou = 0.45
 # What key to press to quit and shutdown the autoaim
 aaQuitKey = "P"
 
-# 鼠标驱动：'sendinput' 任意鼠标免厂商软件（win32 注入）；
-#           'logitech' 走罗技驱动，需 GHUB/LGS 在运行且有罗技设备
-mouse_driver = "sendinput"
+# 鼠标驱动：
+#   'dll'       自建 native/mouse_driver.dll（C 里直接 SendInput，带小数位移累积，最省开销）
+#   'logitech'  走罗技驱动，需 GHUB/LGS 在运行且有罗技设备
+mouse_driver = "dll"
+
+# 仅 mouse_driver = "dll" 生效：进程多媒体定时器精度（毫秒）。
+# 0 = 不改；1 = 更细的调度间隔，摇鼠更稳，代价是略高 CPU/耗电。
+dll_timer_ms = 1
 
 # Displays the Corrections per second in the terminal
 cpsDisplay = True

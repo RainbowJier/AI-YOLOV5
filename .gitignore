@@ -18,3 +18,6 @@ train/**/*.pt
 
 # wheels that used to live in the repo root
 *.whl
+
+# built from app-cs2/native/mouse_driver.c by scripts/build_dll.ps1
+app-cs2/native/*.dll

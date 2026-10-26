@@ -52,8 +52,13 @@ def main():
     camera, c_width, c_height = selected
 
     mouse = create_driver(mouse_driver)
-    detector = load_detector(args.weights, mouse)
-    run(detector, camera, (c_width, c_height))
+    try:
+        detector = load_detector(args.weights, mouse)
+        run(detector, camera, (c_width, c_height))
+    finally:
+        close = getattr(mouse, 'close', None)
+        if close is not None:
+            close()
 
 
 if __name__ == "__main__":
