@@ -11,6 +11,7 @@ from config import aaQuitKey, capture, cpsDisplay, visuals
 
 _QUIT = ord(aaQuitKey)
 _LBUTTON = win32con.VK_LBUTTON
+_VISUALS_EVERY = 2  # imshow + waitKey cost 1-3 ms; preview at half rate
 
 
 def run(detector, camera, center):
@@ -24,6 +25,7 @@ def run(detector, camera, center):
         import cv2
 
     count = 0
+    shown = 0
     start = time.perf_counter()
     aim = detector.aim
     infer = detector.infer
@@ -48,10 +50,12 @@ def run(detector, camera, center):
                 start = now
 
             if visuals:
-                _draw(cv2, frame, rows)
-                cv2.imshow('Live Feed', frame)
-                if (cv2.waitKey(1) & 0xFF) == ord('q'):
-                    break
+                shown += 1
+                if shown % _VISUALS_EVERY == 0:
+                    _draw(cv2, frame, rows)
+                    cv2.imshow('Live Feed', frame)
+                    if (cv2.waitKey(1) & 0xFF) == ord('q'):
+                        break
     finally:
         camera.stop()
 

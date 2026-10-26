@@ -30,12 +30,12 @@ Runtime controls: CAPS_LOCK (`0x14`) toggles aiming; quit key is `aaQuitKey` in 
 
 - `capture.py` — window picker (titled windows only), up to 10 activate retries, bettercam on the centered `screenShotWidth × screenShotHeight` region, RGB, `max_buffer_len=64`. Returns `(camera, cx, cy)`.
 - `driver.py` — pluggable mouse drivers, picked by `mouse_driver` in config: `dll` (default; `native/mouse_driver.dll` built from `native/mouse_driver.c` by `scripts/build_dll.ps1`, SendInput in C with sub-pixel remainder accumulation and an optional `dll_timer_ms` timer-resolution bump — see docs/DRIVER.md) or `logitech` (`logitech.driver.dll` via ctypes; needs GHUB/LGS running or moves are no-ops). `DllDriver` exposes `close()`; `main.py` calls it on exit.
-- `preprocess.py` — one HtoD copy, permute/cast/normalize on GPU; CPU path writes BCHW directly into a preallocated array.
-- `nms.py` — single-frame class-agnostic NMS, no sort, no time check. Returns one `(n, 6)` tensor. Accepts both output layouts — YOLOv5 `(1, anchors, 5+nc)` with objectness and YOLOv8/11 `(1, 4+nc, anchors)` without — auto-detected by shape.
+- `preprocess.py` — `CudaUploader`: one pinned staging buffer + one persistent device input, single async HtoD, cast + /255 on the GPU (an event guards the pinned buffer from in-flight rewrites); host providers write into a preallocated feed array.
+- `nms.py` — single-frame NMS in two halves: the device reduces the prediction to a fixed top-64 slab (mul/max/topk/gather, no data-dependent shapes, no sync), one D2H moves the slab, then threshold + class filter + class-agnostic greedy NMS run on the host. Returns one `(n, 6)` cpu tensor. Accepts both output layouts — YOLOv5 `(1, anchors, 5+nc)` with objectness and YOLOv8/11 `(1, 4+nc, anchors)` without — auto-detected by shape.
 - `backends/` — `base.Detector` shared; `OnnxDetector` uses IO binding on CUDA with a reused output buffer and pins ORT to 8 intra-op threads on the CPU provider (default oversubscribes: 35 ms → 4–16 ms); `TensorRTDetector` drives `aimbot/engine.py`; `TorchDetector` loads `.pt` directly (no torch.hub; v11 checkpoints need the `ultralytics` package installed to unpickle; CPU path caps `torch.set_num_threads(8)`).
-- `targeting.py` — `pick` selects the closest box on the tensor and transfers that one row; `aim_at` gates on CapsLock + `aim_range`, applies headshot offset (torch 0.2 / onnx 0.1 / tensorrt 0.32) and arctan smoothing; left button drops the aim point to the box center and speeds the move 3.0/2.6.
+- `targeting.py` — `pick` transfers the NMS slab to the host once; the team filter and the closest-box scan run in numpy; `aim_at` gates on CapsLock + `aim_range`, applies headshot offset (torch 0.2 / onnx 0.1 / tensorrt 0.32) and arctan smoothing; left button drops the aim point to the box center and speeds the move 3.0/2.6.
 - `loop.py` — grab → infer → aim → optional save/preview/CPS.
-- `engine.py` — TensorRT engine loader speaking both the 8.x binding API and the 10/11 tensor API (`num_io_tensors`, `set_tensor_address`, `execute_async_v3` + stream sync).
+- `engine.py` — TensorRT engine loader speaking both the 8.x binding API and the 10/11 tensor API (`num_io_tensors`, `set_tensor_address` cached once, `execute_async_v3`, no per-frame sync — the NMS slab copy is the sync point).
 
 ## Local patches in train/ (do not revert)
 

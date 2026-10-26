@@ -7,6 +7,7 @@ That tree is only put on the path while the file is unpickled.
 import pathlib
 import sys
 
+import numpy as np
 import torch
 
 from aimbot.backends.base import Detector
@@ -39,6 +40,7 @@ class TorchDetector(Detector):
     def __init__(self, weights, mouse, headshot_fraction=0.2, speed=2.6):
         super().__init__(mouse, headshot_fraction, speed)
         self.cuda = torch.cuda.is_available()
+        self._feed = None
         if not self.cuda:
             # Same oversubscription story as the ORT backend: 18 threads
             # measured 46 ms on this CPU, 8 threads 38 ms.
@@ -58,7 +60,11 @@ class TorchDetector(Detector):
             if self.cuda:
                 pred = self.model(self.uploader.upload(frame))
             else:
-                pred = self.model(torch.from_numpy(frame_to_numpy(frame, half=False)))
+                if self._feed is None:
+                    h, w, _ = frame.shape
+                    self._feed = np.empty((1, 3, h, w), np.float32)
+                im = frame_to_numpy(frame, half=False, out=self._feed)
+                pred = self.model(torch.from_numpy(im))
             if isinstance(pred, (list, tuple)):
                 pred = pred[0]
             return nms(pred, confidence, iou, max_det=10)

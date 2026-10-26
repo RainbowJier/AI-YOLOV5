@@ -1,5 +1,6 @@
 """ONNX Runtime backend. Provider comes from onnxChoice in config.py."""
 
+import numpy as np
 import onnxruntime as ort
 import torch
 
@@ -18,6 +19,7 @@ class OnnxDetector(Detector):
         self.provider = _PROVIDERS.get(onnxChoice)  # None on the OpenVINO path
         self.ov_request = None
         self.shared_stream = False
+        self._feed = None
 
         if onnxChoice == 4:
             # Intel OpenVINO: ov_device picks the Arc iGPU / NPU / CPU. Fastest
@@ -77,15 +79,23 @@ class OnnxDetector(Detector):
 
     def infer(self, frame):
         if self.ov_request is not None:
-            feed = frame_to_numpy(frame, self.half)
-            out = next(iter(self.ov_request.infer({self.input_name: feed}).values()))
-            return nms(torch.from_numpy(out), confidence, iou, max_det=3)
-        if self.cuda:
+            out = next(iter(self.ov_request.infer(
+                {self.input_name: self._host_feed(frame)}).values()))
+            out = torch.from_numpy(out)
+        elif self.cuda:
             out = self._bound(self.uploader.upload(frame))
         else:
-            feed = frame_to_numpy(frame, self.half)
-            out = torch.from_numpy(self.session.run(None, {self.input_name: feed})[0])
+            out = torch.from_numpy(self.session.run(
+                None, {self.input_name: self._host_feed(frame)})[0])
         return nms(out, confidence, iou, max_det=3)
+
+    def _host_feed(self, frame):
+        """Preallocated normalized input; frames write into the same array."""
+        if self._feed is None or self._feed.shape[2] != frame.shape[0]:
+            h, w, _ = frame.shape
+            self._feed = np.empty((1, 3, h, w),
+                                  np.float16 if self.half else np.float32)
+        return frame_to_numpy(frame, self.half, self._feed)
 
     def _bound(self, im):
         """Feed the persistent CUDA input straight in. Output buffer reused."""
@@ -104,4 +114,5 @@ class OnnxDetector(Detector):
 
 
 def _ort_type(dtype):
-    return ort.TensorType.float16 if dtype == torch.float16 else ort.TensorType.float32
+    # ORT >=1.23 has no ort.TensorType; bind_input/bind_output take dtype strings.
+    return 'float16' if dtype == torch.float16 else 'float32'

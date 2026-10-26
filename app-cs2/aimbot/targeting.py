@@ -30,12 +30,6 @@ _FIRING_SPEED = 3.0 / 2.6
 _CAPS = 0x14
 
 
-def class_filter(device):
-    """Class ids as a column tensor, built once per detector."""
-    import torch
-    return torch.tensor(CLASS_IDS, device=device, dtype=torch.float32).view(1, -1)
-
-
 def pick(det):
     """The whole (n, 6) NMS result as a host array, team-filtered, or None.
 

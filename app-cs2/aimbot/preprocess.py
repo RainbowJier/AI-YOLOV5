@@ -48,11 +48,15 @@ class CudaUploader:
         return self._gpu.mul_(_SCALE)
 
 
-def frame_to_numpy(frame, half):
-    """HWC uint8 capture -> BCHW float array, contiguous, for host providers."""
+def frame_to_numpy(frame, half, out=None):
+    """HWC uint8 capture -> BCHW float array, contiguous, for host providers.
+
+    Pass out= to reuse one preallocated array across frames.
+    """
     if frame.shape[2] == 4:
         frame = frame[:, :, :3]
-    im = np.empty((1, 3, frame.shape[0], frame.shape[1]),
-                  np.float16 if half else np.float32)
-    np.multiply(frame, _SCALE, out=im[0].transpose(1, 2, 0), casting='unsafe')
-    return im
+    if out is None:
+        out = np.empty((1, 3, frame.shape[0], frame.shape[1]),
+                       np.float16 if half else np.float32)
+    np.multiply(frame, _SCALE, out=out[0].transpose(1, 2, 0), casting='unsafe')
+    return out
