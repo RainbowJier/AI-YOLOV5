@@ -49,17 +49,54 @@ T = True
 # ============ 瞄准 / Aim ============
 
 # 目标中心离准星超过这个像素数就不瞄 / max box distance to the crosshair, px
-aim_range = 50
+aim_range = 70
 
 # 选目标时优先离准星最近的框；关掉则永远取置信度最高的第一行。
 # Prefer the closest box to the crosshair; off = first (top-score) row.
 centerOfScreen = True
 
-# 鼠标平滑系数，越大越柔，最低 1.0 / move smoothing, higher = softer, min 1.0
-lock_smooth = 4
+# 锁定点在目标框内的垂直位置：0=框顶 · 0.2=头部 · 0.5=中心 · 1=框底。
+# 运行中按 ↑/↓ 实时调节（每次 0.02，终端打印当前值），调好把值写回这里。
+# Vertical lock point inside the target box (0=top, 1=bottom).
+lock_y = 0.20
 
-# 灵敏度系数：桌面试用 1；游戏里调成游戏内灵敏度 / sensitivity scale
-lock_sen = 1
+# 灵敏度换算：输出鼠标 dots = 像素位移 ÷ lock_sen。桌面试用 1；
+# 游戏里填游戏灵敏度相对桌面的倍数（如 1.25），填对后收敛手感与桌面一致。
+# Mouse dots = px move / lock_sen (game sensitivity scale).
+lock_sen = 1.25
+
+# —— 移动 / Movement ——
+# 速度预测平滑（秒）：内部常数，影响速度估计的响应
+# Velocity EMA time constant. Higher = prediction lag, lower = noisier.
+# 不需要调但暴露出来了，默认 0.060
+velocity_tau = 0.060
+
+# 移动速度上限（px/s）：防止大幅修正时瞬移。调大可更激进
+# Speed cap (px/s) to prevent teleport on huge corrections. Raise for aggressive.
+max_move_speed = 4800.0
+
+# 吸附速度：越大越快越狠，越小越柔（推荐 5-10 调手感）
+# Snap strength: larger = aggressive lock, smaller = smooth glide. Tune for feel.
+move_rate = 8
+
+# 平滑：检测框 EMA 时间常数（秒），越大越稳（抖动少），越小跟得越紧
+# 推荐范围：0.015-0.050。紧跟感用 0.015-0.025，柔和感用 0.035-0.050
+# Smoothing: EMA time constant; higher=steady (less jitter), lower=responsive.
+# Recommended: 0.015-0.025 for tight, 0.035-0.050 for smooth.
+track_tau = 0.0190
+
+
+# —— 手感微调 / Feel Fine-tuning ——
+
+# 吸附死区（px）：锁定范围内不动鼠标，消除抖动。范围 0.5-5.0
+# Deadband: no mouse move within this radius of lock point (noise immunity).
+# 0.5-1.5 tight, 2.0-5.0 smooth. Adjust in targeting.py if needed.
+deadband_px = 1
+
+# 引导衰减半径（px）：EMA 预测的引导在接近准星时逐渐关闭（噪声保护）
+# Lead fade radius: velocity lead prediction fades near crosshair to reduce jitter.
+# Lower = tighter deadzone but more jitter, higher = smoother but less responsive.
+lead_fade_radius = 12.0
 
 # ============ 鼠标驱动 / Mouse driver ============
 
@@ -80,7 +117,7 @@ cpsDisplay = True
 # 预览窗口，每两帧渲染一次（每口约 1-3ms）；实战建议关掉。
 # Preview window, rendered every 2nd frame (~1-3 ms per draw); turn off
 # for real play.
-visuals = True
+visuals = False
 
 # 按住左键时把截取帧存进 images/（采集训练数据用）。
 # Save the capture while the left button is held (dataset collection).
