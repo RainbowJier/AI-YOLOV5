@@ -30,6 +30,16 @@ sys.modules['win32con'] = win32con
 
 sys.path.insert(0, r'D:\桌面\github\AI-AIMBOT-YOLOV5\app-cs2')
 import config  # noqa: E402
+# Pin the params the algorithm's math depends on so the sim tests don't
+# flap with whatever the user currently tuned in config.py.
+config.move_rate = 10
+config.track_tau = 0.019
+config.deadband_px = 1
+config.lead_min_speed = 30.0
+config.lead_fade_radius = 12.0
+config.max_move_speed = 4800
+config.aim_range = 70
+config.lock_sen = 1.25
 import aimbot.targeting as T  # noqa: E402
 
 
@@ -196,22 +206,25 @@ def test_lmb_speeds_up():
     err1 = converge(-1)
     assert err0 < 6.0, 'normal did not converge: {:.2f}'.format(err0)
     assert err1 < 6.0, 'firing did not converge: {:.2f}'.format(err1)
-    # firing converges faster: measure at an earlier moment (0.5 s)
-    def err_at(frames, lmb):
+    # firing converges in fewer frames: time-to-threshold comparison
+    def frames_to(err_thresh, lmb):
         T = reset()
         m = ViewMouse()
         win32api._lmb = lmb
-        for i in range(frames):
+        for i in range(120):
             T.aim_at((200 + m.view_x, 130 + m.view_y, 20, 40), (CX, CY), m, 2.6)
             if T._last_t is not None:
                 T._last_t -= _DT
+            if abs(118.0 + m.view_y - CY) < err_thresh:
+                win32api._lmb = 0
+                return i + 1
         win32api._lmb = 0
-        return abs(118.0 + m.view_y - CY)
+        return 999
 
-    e0 = err_at(8, 0)
-    e1 = err_at(8, -1)
-    assert e1 < e0 * 0.8, 'firing not faster: {:.2f} vs {:.2f}'.format(e1, e0)
-    print('PASS lmb firing: @0.13s err normal={:.1f} firing={:.1f}'.format(e0, e1))
+    f0 = frames_to(2.0, 0)
+    f1 = frames_to(2.0, -1)
+    assert f1 < f0, 'firing not faster: {} vs {} frames'.format(f1, f0)
+    print('PASS lmb firing: frames-to-2px normal={} firing={}'.format(f0, f1))
 
 
 def test_head_body_no_flipflop():

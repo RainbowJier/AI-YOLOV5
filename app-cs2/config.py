@@ -77,7 +77,7 @@ lock_sen = 1.25
 # 推荐 4-12。晃动大就调小，跟不紧就调大。
 # Snap stiffness (× speed = spring rate /s): higher locks faster.
 # Try 4-12. Lower it if it shakes, raise it if it lags.
-move_rate = 10
+move_rate = 11
 
 # 平滑：检测框 EMA 时间常数（秒），越大越稳，越小跟得越紧。
 # 推荐范围：0.015-0.050。紧跟感用 0.015-0.025，柔和感用 0.035-0.050
@@ -130,7 +130,7 @@ cpsDisplay = True
 # 预览窗口，每两帧渲染一次（每口约 1-3ms）；实战建议关掉。
 # Preview window, rendered every 2nd frame (~1-3 ms per draw); turn off
 # for real play.
-visuals = True
+visuals = False
 
 # 按住左键时把截取帧存进 images/（采集训练数据用）。
 # Save the capture while the left button is held (dataset collection).
