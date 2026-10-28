@@ -65,38 +65,51 @@ lock_y = 0.20
 # Mouse dots = px move / lock_sen (game sensitivity scale).
 lock_sen = 1.25
 
+# 按住左键（开火）时吸附加速 3.0/2.6×（锁得更狠）。
+# Holding the left button boosts the snap 3.0/2.6x (tighter lock).
+
 # —— 移动 / Movement ——
-# 速度预测平滑（秒）：内部常数，影响速度估计的响应
-# Velocity EMA time constant. Higher = prediction lag, lower = noisier.
-# 不需要调但暴露出来了，默认 0.060
-velocity_tau = 0.060
+# v3 移动核心 = 临界阻尼弹簧（无过冲、静止目标物理上零输出）。
+# Movement core v3 = critically damped spring (no overshoot; a standing
+# target produces exactly zero output).
 
-# 移动速度上限（px/s）：防止大幅修正时瞬移。调大可更激进
-# Speed cap (px/s) to prevent teleport on huge corrections. Raise for aggressive.
-max_move_speed = 4800.0
+# 吸附快慢（× speed = 弹簧刚度 /s）：越大锁定越快，越小越柔。
+# 推荐 4-12。晃动大就调小，跟不紧就调大。
+# Snap stiffness (× speed = spring rate /s): higher locks faster.
+# Try 4-12. Lower it if it shakes, raise it if it lags.
+move_rate = 10
 
-# 吸附速度：越大越快越狠，越小越柔（推荐 5-10 调手感）
-# Snap strength: larger = aggressive lock, smaller = smooth glide. Tune for feel.
-move_rate = 8
-
-# 平滑：检测框 EMA 时间常数（秒），越大越稳（抖动少），越小跟得越紧
+# 平滑：检测框 EMA 时间常数（秒），越大越稳，越小跟得越紧。
 # 推荐范围：0.015-0.050。紧跟感用 0.015-0.025，柔和感用 0.035-0.050
 # Smoothing: EMA time constant; higher=steady (less jitter), lower=responsive.
 # Recommended: 0.015-0.025 for tight, 0.035-0.050 for smooth.
 track_tau = 0.0190
 
+# 移动速度上限（px/s）：防止大幅修正时瞬移。调大可更激进
+# Speed cap (px/s) to prevent teleport on huge corrections. Raise for aggressive.
+max_move_speed = 4800.0
+
+# 速度估计平滑（秒）：内部常数。不需要调但暴露出来了，默认 0.060
+# Velocity EMA time constant. Internal; exposed but no need to touch. Default 0.060.
+velocity_tau = 0.060
 
 # —— 手感微调 / Feel Fine-tuning ——
 
-# 吸附死区（px）：锁定范围内不动鼠标，消除抖动。范围 0.5-5.0
-# Deadband: no mouse move within this radius of lock point (noise immunity).
-# 0.5-1.5 tight, 2.0-5.0 smooth. Adjust in targeting.py if needed.
+# 吸附死区（px）：准星距锁定点小于此值时完全不动鼠标（硬保持）。
+# 晃动仍大 → 加大到 2.5-4。
+# Deadband (px): inside this radius the crosshair is held exactly still.
+# Still shaking -> raise to 2.5-4.
 deadband_px = 1
 
-# 引导衰减半径（px）：EMA 预测的引导在接近准星时逐渐关闭（噪声保护）
+# 引导衰减半径（px）：速度引导在接近准星时逐渐关闭（噪声保护）
 # Lead fade radius: velocity lead prediction fades near crosshair to reduce jitter.
-# Lower = tighter deadzone but more jitter, higher = smoother but less responsive.
 lead_fade_radius = 12.0
+
+# 引导噪声门（px/s）：目标速度估计低于此值时引导严格为 0（站立目标零前馈）。
+# 静止目标仍微晃 → 加大到 50-80。
+# Lead noise gate (px/s): below this estimated speed the lead is exactly
+# zero. Standing target still shakes -> raise to 50-80.
+lead_min_speed = 30.0
 
 # ============ 鼠标驱动 / Mouse driver ============
 
@@ -117,7 +130,7 @@ cpsDisplay = True
 # 预览窗口，每两帧渲染一次（每口约 1-3ms）；实战建议关掉。
 # Preview window, rendered every 2nd frame (~1-3 ms per draw); turn off
 # for real play.
-visuals = False
+visuals = True
 
 # 按住左键时把截取帧存进 images/（采集训练数据用）。
 # Save the capture while the left button is held (dataset collection).

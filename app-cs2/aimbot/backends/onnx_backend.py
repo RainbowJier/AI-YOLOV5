@@ -13,8 +13,8 @@ _PROVIDERS = {1: "CPUExecutionProvider", 2: "DmlExecutionProvider", 3: "CUDAExec
 
 
 class OnnxDetector(Detector):
-    def __init__(self, weights, mouse, headshot_fraction=0.1, speed=2.6):
-        super().__init__(mouse, headshot_fraction, speed)
+    def __init__(self, weights, mouse, speed=2.6):
+        super().__init__(mouse, speed)
         self.cuda = onnxChoice == 3
         self.provider = _PROVIDERS.get(onnxChoice)  # None on the OpenVINO path
         self.ov_request = None

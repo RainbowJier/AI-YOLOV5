@@ -14,8 +14,8 @@ from config import confidence, iou
 
 
 class TensorRTDetector(Detector):
-    def __init__(self, weights, mouse, headshot_fraction=0.32, speed=2.6):
-        super().__init__(mouse, headshot_fraction, speed)
+    def __init__(self, weights, mouse, speed=2.6):
+        super().__init__(mouse, speed)
         self.engine = Engine(weights)
         self.uploader = CudaUploader(half=True)
 

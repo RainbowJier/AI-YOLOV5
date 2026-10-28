@@ -33,6 +33,8 @@ def main():
     camera, c_width, c_height = selected
 
     mouse = create_driver(mouse_driver)
+    if not mouse.ok:
+        raise SystemExit('mouse driver "{}" failed to init; see the error above'.format(mouse_driver))
     try:
         detector = load_detector(args.weights, mouse)
         run(detector, camera, (c_width, c_height))

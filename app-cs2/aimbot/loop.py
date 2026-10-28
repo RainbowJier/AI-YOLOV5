@@ -7,12 +7,34 @@ import time
 import win32api
 import win32con
 
+import config
 from aimbot.targeting import class_label
 from config import aaQuitKey, capture, cpsDisplay, visuals
 
 _QUIT = ord(aaQuitKey)
 _LBUTTON = win32con.VK_LBUTTON
 _VISUALS_EVERY = 2  # imshow + waitKey cost 1-3 ms; preview at half rate
+_Y_STEP = 0.02      # lock_y nudge per tap; hold repeats every _Y_REPEAT s
+_Y_REPEAT = 0.15
+_y_down = {}        # key -> held last frame
+_y_last = {}        # key -> last repeat time
+
+
+def _nudge_lock_y():
+    """Up/Down arrows move the vertical lock point on the target box.
+    GetAsyncKeyState is global, so this works while the game has focus."""
+    now = time.perf_counter()
+    step = 0.0
+    for key, d in ((win32con.VK_UP, 1.0), (win32con.VK_DOWN, -1.0)):
+        down = win32api.GetAsyncKeyState(key) < 0
+        if down and (not _y_down.get(key) or now - _y_last.get(key, 0) > _Y_REPEAT):
+            step += d
+            _y_last[key] = now
+        _y_down[key] = down
+    if step:
+        config.lock_y = min(1.0, max(0.0, config.lock_y + _Y_STEP * step))
+        print('[aim] lock_y = {:.2f}   (0=框顶  0.2=头  0.5=中心  1=框底)'.format(
+            config.lock_y))
 
 
 def run(detector, camera, center):
@@ -33,6 +55,7 @@ def run(detector, camera, center):
     get = camera.get_latest_frame
     try:
         while win32api.GetAsyncKeyState(_QUIT) == 0:
+            _nudge_lock_y()
             frame = get()
             if frame is None:
                 time.sleep(0.001)  # capture warm-up; don't spin a core
@@ -46,7 +69,8 @@ def run(detector, camera, center):
             now = time.perf_counter()
             if now - start > 1:
                 if cpsDisplay:
-                    print("CPS: {}".format(count))
+                    print("CPS: {}  aim: {}".format(
+                        count, "ON" if win32api.GetKeyState(win32con.VK_CAPITAL) else "off"))
                 count = 0
                 start = now
 

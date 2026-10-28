@@ -37,8 +37,8 @@ def _load(weights):
 
 
 class TorchDetector(Detector):
-    def __init__(self, weights, mouse, headshot_fraction=0.2, speed=2.6):
-        super().__init__(mouse, headshot_fraction, speed)
+    def __init__(self, weights, mouse, speed=2.6):
+        super().__init__(mouse, speed)
         self.cuda = torch.cuda.is_available()
         self._feed = None
         if not self.cuda:

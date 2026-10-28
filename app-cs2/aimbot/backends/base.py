@@ -1,12 +1,11 @@
 """Shared detector wiring. Each backend only implements infer()."""
 
-from aimbot.targeting import aim_at, closest, pick
+from aimbot.targeting import aim_at, closest, pick, target_lost
 
 
 class Detector:
-    def __init__(self, mouse, headshot_fraction, speed):
+    def __init__(self, mouse, speed):
         self.mouse = mouse
-        self.headshot_fraction = headshot_fraction
         self.speed = speed
 
     def aim(self, det, center):
@@ -17,8 +16,9 @@ class Detector:
         rows feed the preview without a second device sync.
         """
         rows = pick(det)
-        if rows is not None:
-            target = closest(rows, center)
-            if target is not None:
-                aim_at(target, center, self.mouse, self.headshot_fraction, self.speed)
+        target = closest(rows, center) if rows is not None else None
+        if target is not None:
+            aim_at(target, center, self.mouse, self.speed)
+        else:
+            target_lost(center)
         return rows
