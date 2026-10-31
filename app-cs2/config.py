@@ -46,6 +46,14 @@ iou = 0.45
 CT = True
 T = True
 
+# 只识别头部 / 身体（在队伍过滤之上再筛部位；调参面板「目标」页有开关，
+# 实时生效）：两个都开 = 全部；只开一个 = 只瞄该部位；两个都关 = 不瞄任何目标。
+# Head/body part filter on top of the team filter (live switches in the
+# tuner panel): both on = everything; one on = that part only;
+# both off = nothing gets aimed at.
+aim_body = True
+aim_head = True
+
 # ============ 瞄准 / Aim ============
 
 # 目标中心离准星超过这个像素数就不瞄 / max box distance to the crosshair, px

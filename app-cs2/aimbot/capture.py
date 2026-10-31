@@ -1,5 +1,6 @@
 """Game window selection and centered region capture."""
 
+import gc
 import time
 
 import bettercam
@@ -54,6 +55,98 @@ def _region_from_center(cx, cy):
     if (left, top) != (cx - screenShotWidth // 2, cy - screenShotHeight // 2):
         message = '窗口部分出界，截取区已钳制到屏幕内'
     return (left, top, left + screenShotWidth, top + screenShotHeight), message
+
+
+class ResilientCamera:
+    """bettercam camera that survives DXGI desktop-duplication loss.
+
+    A display-mode change (fullscreen toggles, overlays, resolution) makes
+    ReleaseFrame fail with DXGI_ERROR_ACCESS_LOST. bettercam's capture thread
+    then dies, and its own error path calls join() on itself, so the camera
+    is left half-stopped; get_latest_frame() waits on an event that nothing
+    will ever set again and the aim loop freezes, quit key included.
+
+    This wrapper never blocks: get_latest_frame() waits a bounded time and
+    returns None (the loop's "no frame yet" path) instead. If the capture
+    thread is dead, or no frame has arrived for _STALL_S, the duplication is
+    rebuilt, retrying once a second until the output is available again.
+    """
+
+    _WAIT_S = 0.1     # bounded wait per get_latest_frame call
+    _STALL_S = 1.5    # no frame for this long -> rebuild even if "alive"
+    _RETRY_S = 1.0
+
+    def __init__(self, region, fps):
+        self._region = region
+        self._fps = fps
+        self._cam = None
+        self._last_frame_t = time.monotonic()
+        self._retry_at = 0.0
+        self._open()
+
+    def _open(self):
+        cam = bettercam.create(
+            output_color="RGB", region=self._region, max_buffer_len=64)
+        cam.start(target_fps=self._fps, video_mode=True)
+        self._cam = cam
+        self._last_frame_t = time.monotonic()
+
+    def _dead(self):
+        thread = getattr(self._cam, '_BetterCam__thread', None)
+        return thread is not None and not thread.is_alive()
+
+    def _rebuild(self):
+        now = time.monotonic()
+        if now < self._retry_at:
+            return
+        self._retry_at = now + self._RETRY_S
+        print('[capture] 采集会话丢失（DXGI），正在重建…')
+        old, self._cam = self._cam, None
+        try:
+            if old is not None:
+                old.release()
+        except Exception:
+            pass   # the duplication is already gone; nothing left to free
+        del old
+        gc.collect()
+        # The factory hands back its cached instance for the same output, and
+        # anything still referencing the broken one (e.g. the dead capture
+        # thread's frame) keeps that weak entry alive -- evict it explicitly.
+        factory = getattr(bettercam, '_' + 'DXFactory__factory', None) \
+            or vars(bettercam).get('__factory')
+        if factory is not None:
+            factory._camera_instances.clear()
+        try:
+            self._open()
+        except Exception as e:
+            print('[capture] 重建失败，{:.0f} 秒后重试：{}'.format(
+                self._RETRY_S, e))
+        else:
+            print('[capture] 采集已恢复')
+
+    def get_latest_frame(self):
+        """Newest frame, or None when none arrived (never blocks long)."""
+        cam = self._cam
+        if cam is None:
+            self._rebuild()
+            time.sleep(self._WAIT_S)
+            return None
+        event = getattr(cam, '_BetterCam__frame_available', None)
+        if event is None or event.wait(self._WAIT_S):
+            frame = cam.get_latest_frame()
+            self._last_frame_t = time.monotonic()
+            return frame
+        if self._dead() or time.monotonic() - self._last_frame_t > self._STALL_S:
+            self._rebuild()
+        return None
+
+    def stop(self):
+        cam, self._cam = self._cam, None
+        if cam is not None:
+            try:
+                cam.stop()
+            except Exception:
+                pass
 
 
 def open_window(window):
@@ -114,15 +207,10 @@ def open_window(window):
         print('[capture] {}'.format(message))
 
     try:
-        camera = bettercam.create(
-            output_color="RGB", region=region, max_buffer_len=64)
-    except ValueError as e:
+        camera = ResilientCamera(region, target_fps)
+    except Exception as e:
         print('[capture] 创建采集失败：{}（region={}）'.format(e, region))
         return None
-    if camera is None:
-        print("Camera creation failed.")
-        return None
-    camera.start(target_fps=target_fps, video_mode=True)
     return camera, screenShotWidth // 2, screenShotHeight // 2
 
 

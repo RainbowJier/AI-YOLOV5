@@ -34,6 +34,7 @@ Anti-shake properties (kept from v3.0):
   firing, the tracker stays warm, aiming resumes on release
 """
 
+import sys
 import time
 from math import exp, hypot, tanh
 
@@ -43,10 +44,39 @@ import win32con
 
 import config
 
+# 弹簧积分用 _DT_MAX 限幅、超过 _GAP_RESET 的间隔清零旧速度
+# （修复帧间隔过长造成的瞬移；诊断记录器已移除）。
 
-_IDS = ([0, 1] if config.CT else []) + ([2, 3] if config.T else [])
-CLASS_IDS = _IDS or [0, 1, 2, 3]
-_ALL_CLASSES = len(CLASS_IDS) == 4
+
+def apply_class_filter():
+    """Recompute the class filter from config: teams (CT/T) and part
+    (body/head). 0=CT身体 1=CT头 2=T身体 3=T头; odd ids are heads.
+
+    Called at import and from the tuner when a switch flips -- the aim
+    loop reads CLASS_IDS/_ALL_CLASSES live, and any loaded backend that
+    bound CLASS_IDS at import (tensorrt passes it to nms) gets the fresh
+    list pushed in, exactly like refresh() does for confidence.
+    """
+    global _IDS, CLASS_IDS, _ALL_CLASSES
+    team = ([0, 1] if config.CT else []) + ([2, 3] if config.T else [])
+    if not team:                      # both teams off = everyone competes
+        team = [0, 1, 2, 3]
+    body = bool(getattr(config, 'aim_body', True))
+    head = bool(getattr(config, 'aim_head', True))
+    _IDS = [c for c in team if (c % 2 == 0 and body) or (c % 2 == 1 and head)]
+    CLASS_IDS = _IDS
+    _ALL_CLASSES = len(CLASS_IDS) == 4
+    for name in ('tensorrt_backend', 'onnx_backend', 'torch_backend'):
+        module = sys.modules.get('aimbot.backends.' + name)
+        if module is not None and hasattr(module, 'CLASS_IDS'):
+            module.CLASS_IDS = CLASS_IDS
+    return CLASS_IDS
+
+
+_IDS = []
+CLASS_IDS = []
+_ALL_CLASSES = False
+apply_class_filter()
 
 
 def class_label(cls_id):
@@ -63,6 +93,8 @@ _FIRING_GAIN = 3.0 / 2.6
 _VEL_TAU = getattr(config, 'velocity_tau', 0.060)
 _VEL_CLAMP = 2500.0
 _STALE_DT = 0.25          # s without a detection -> full re-acquire
+_DT_MAX = 2.0 / 60.0      # s; longest step the spring integrates / moves by
+_GAP_RESET = 0.1          # s; a longer hole in the data drops the old velocity
 _JUMP_BASE = 30.0         # px margin for the jump test at zero speed
 _JUMPS_TO_RESET = 2       # consecutive off-prediction frames -> re-acquire
 _LEAD_FADE_R = getattr(config, 'lead_fade_radius', 12.0)
@@ -299,18 +331,25 @@ def aim_at(box, center, mouse, speed):
     # Error convention: e points from crosshair TO aim, so the
     # acceleration term enters with +.
     omega = max(config.move_rate * speed * (_FIRING_GAIN if firing else 1.0), _MIN_RATE)
-    damp = 1.0 + 2.0 * omega * dt
-    _svx = (_svx + dt * omega * omega * ex) / damp
-    _svy = (_svy + dt * omega * omega * ey) / damp
+    # The step is velocity * dt, so a long gap between calls (detector
+    # dropout, target lost then found again, capture hiccup) used to turn
+    # into one huge teleport. Integrate with a bounded dt, and after a real
+    # hole in the data restart from rest instead of carrying the old velocity.
+    if dt > _GAP_RESET:
+        _reset_spring()
+    sdt = min(dt, _DT_MAX)
+    damp = 1.0 + 2.0 * omega * sdt
+    _svx = (_svx + sdt * omega * omega * ex) / damp
+    _svy = (_svy + sdt * omega * omega * ey) / damp
 
     # Soft cap on the spring velocity; the per-frame step is then bounded
-    # by max_move_speed * dt by construction.
+    # by max_move_speed * sdt by construction.
     vmax = config.max_move_speed
     _svx = vmax * tanh(_svx / vmax)
     _svy = vmax * tanh(_svy / vmax)
 
-    mx = _svx * dt
-    my = _svy * dt
+    mx = _svx * sdt
+    my = _svy * sdt
     _mx, _my = mx, my
 
     if not _announced:

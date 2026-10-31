@@ -78,10 +78,16 @@ _AIM_TOGGLE = Toggle(
 _VISUAL_TOGGLE = Toggle(
     'visuals', '实时画面',
     '开：面板内实时显示检测画面；实战建议关闭')
+_BODY_TOGGLE = Toggle(
+    'aim_body', '识别身体',
+    '开：身体框参与瞄准；两个都关 = 不瞄任何目标')
+_HEAD_TOGGLE = Toggle(
+    'aim_head', '识别头部',
+    '开：头部框参与瞄准；只打头就关掉「识别身体」')
 
 _SECTIONS = [
     ('feel', '手感', 'FEEL', _FEEL, []),
-    ('target', '目标', 'TARGET', _TARGET, []),
+    ('target', '目标', 'TARGET', _TARGET, [_BODY_TOGGLE, _HEAD_TOGGLE]),
     ('runtime', '运行', 'RUNTIME', [], [_AIM_TOGGLE, _VISUAL_TOGGLE]),
 ]
 
@@ -93,7 +99,7 @@ _GROUPS = [
 ]
 _STRIP_TOGGLES = [_VISUAL_TOGGLE]
 KNOBS = {k.name: k for _, _, knobs, _ in _GROUPS for k in knobs}
-TOGGLES = [_AIM_TOGGLE, _VISUAL_TOGGLE]
+TOGGLES = [_AIM_TOGGLE, _VISUAL_TOGGLE, _BODY_TOGGLE, _HEAD_TOGGLE]
 
 
 class _Theme:
@@ -154,6 +160,7 @@ def refresh():
     tgt._LEAD_FADE_R = config.lead_fade_radius
     tgt._LEAD_MIN = config.lead_min_speed
     tgt._DEADBAND = config.deadband_px
+    tgt.apply_class_filter()
     for name in ('tensorrt_backend', 'onnx_backend', 'torch_backend'):
         module = sys.modules.get('aimbot.backends.' + name)
         if module is not None:
@@ -572,6 +579,8 @@ if ctk is not None:
         def apply(self, value):
             self.value = bool(value)
             setattr(config, self.toggle.name, self.value)
+            if self.toggle.name in ('aim_body', 'aim_head'):
+                refresh()   # class filter is baked at import; recompute it
             self._show()
             if self.toggle.name == 'visuals':
                 self.tuner.visuals_changed()

@@ -53,6 +53,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 | 摇鼠更稳 | `config.py` 的 `dll_timer_ms = 1`（默认已开） |
 | 换推理引擎 | 直接换 `--weights` 后缀：`.engine` > `.onnx`(CUDA) > `.pt` |
 | 只打一方 | `config.py` 的 `CT` / `T`（host 端过滤，所有后端生效） |
+| 只打头 / 只打身体 | 调参面板「目标」页的「识别身体」「识别头部」开关（实时生效），或 `config.py` 的 `aim_body` / `aim_head` |
 | 锁定更快/更柔 | `config.py` 的 `move_rate`（有效值 = move_rate × 2.6/s；默认 8 柔，25 快） |
 | 锁定点高低 | 运行中按 ↑/↓，或改 `lock_y`（0=框顶 0.2=头 0.5=中心 1=框底） |
 
