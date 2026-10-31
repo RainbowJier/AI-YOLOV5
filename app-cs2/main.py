@@ -13,11 +13,11 @@ if _APP not in sys.path:
     sys.path.insert(0, _APP)
 os.chdir(_ROOT)
 
+from aimbot import tuner
 from aimbot.backends import load_detector
-from aimbot.capture import game_selection
+from aimbot.capture import game_selection, open_window
 from aimbot.driver import create_driver
 from aimbot.loop import run
-from aimbot.tuner import start as start_tuner
 from config import mouse_driver
 
 DEFAULT_WEIGHTS = 'app-cs2/weights/10w-v5-320-16.engine'
@@ -28,7 +28,15 @@ def main():
     parser.add_argument('--weights', default=DEFAULT_WEIGHTS, help='.pt, .onnx or .engine model')
     args = parser.parse_args()
 
-    selected = game_selection()
+    # Window picker: the tuner UI opens on its picker page and main blocks
+    # until a window is chosen; console picker when the UI can't run.
+    if tuner.available:
+        window = tuner.pick_window()
+        if window is None:
+            return  # picker closed -- user aborted
+        selected = open_window(window)
+    else:
+        selected = game_selection()
     if selected is None:
         return
     camera, c_width, c_height = selected
@@ -38,7 +46,6 @@ def main():
         raise SystemExit('mouse driver "{}" failed to init; see the error above'.format(mouse_driver))
     try:
         detector = load_detector(args.weights, mouse)
-        start_tuner()  # runtime tuning window; sliders apply instantly
         run(detector, camera, (c_width, c_height))
     finally:
         close = getattr(mouse, 'close', None)

@@ -30,7 +30,8 @@ Anti-shake properties (kept from v3.0):
 - deadband hard-zeroes the error -> v decays exponentially to zero, so
   a resting target rests the mouse
 - sticky + hysteresis selection stops head/body flip-flop
-- firing (LMB) pauses the snap entirely; tracker stays warm
+- aim_on_fire: with the toggle on, LMB gates the snap -- the mouse
+  rests until firing, the tracker stays warm between shots
 """
 
 import time
@@ -172,6 +173,13 @@ def closest(rows, center):
     """Pick the best box: sticky with hysteresis, no head/body flicker."""
     global _stick_x, _stick_y
 
+    if rows.shape[0] == 1:
+        # The common duel: one box, no numpy over 1-row arrays needed.
+        x1, y1, x2, y2 = rows[0, :4]
+        _stick_x = (x1 + x2) * 0.5
+        _stick_y = (y1 + y2) * 0.5
+        return _stick_x, _stick_y, x2 - x1, y2 - y1
+
     cx = (rows[:, 0] + rows[:, 2]) * 0.5
     cy = (rows[:, 1] + rows[:, 3]) * 0.5
     n = rows.shape[0]
@@ -254,6 +262,15 @@ def aim_at(box, center, mouse, speed):
     # a tighter lock while spraying. World-velocity reconstruction is
     # unaffected (_mx/_my still recorded normally).
     firing = win32api.GetKeyState(win32con.VK_LBUTTON) < 0
+
+    # 仅开火时吸附：未按左键就不动鼠标，但上面的跟踪器照常更新（保持
+    # 热身，重新开火立刻接上）。_mx/_my 清零——我们没有注入移动。
+    # Aim-on-fire: without LMB the mouse rests, while the tracker above
+    # keeps updating (warm). No moves are injected, so _mx/_my zero out.
+    if config.aim_on_fire and not firing:
+        _mx = _my = 0.0
+        _reset_spring()
+        return
 
     # Range gate
     if (_sx - cx) ** 2 + (_sy - cy) ** 2 > _AIM_RANGE_SQ:

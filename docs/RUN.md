@@ -30,7 +30,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 ## 3. 选窗口
 
-启动后终端列出所有有标题的窗口，输入序号回车。程序会尝试激活该窗口（最多 10 次，每次等 3 秒），然后截取窗口中心 `screenShotWidth × screenShotHeight`（默认 320×320）的区域开始推理。
+启动后先弹出调参面板的**选择窗口页**：列表里点一下要捕获的窗口，也可以输入标题搜索；列表里没有就先打开游戏再点「刷新列表」。选定后自动进入两栏调参工作台。装不了 UI（缺 customtkinter/Pillow）时回退到终端：列出所有有标题的窗口，输入序号回车。两条路都会尝试激活该窗口（最多 10 次，每次等 3 秒），然后截取窗口中心 `screenShotWidth × screenShotHeight`（默认 320×320）的区域开始推理。
 
 ## 4. 操作
 
@@ -39,7 +39,6 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 | **Caps Lock** | 开/关瞄准。启动时是关的 |
 | **↑ / ↓** | 运行中实时调节锁定垂直位置 `lock_y`（每次 0.02，终端打印当前值；0=框顶 0.2=头 0.5=中心 1=框底），调好把值写回 config.py |
 | **P**（`aaQuitKey`） | 退出 |
-| `visuals = True` 时预览窗口里按 `q` | 退出 |
 
 瞄准逻辑：选离准星最近的框，距离不超过 `aim_range` 才动；垂直锁定位置由 `lock_y` 决定（↑/↓ 热键可调）；按住左键（开火）时吸附加速。详见 `app-cs2/config.py` 的注释和根 README。
 
@@ -50,7 +49,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 | 想要 | 改哪里 |
 | --- | --- |
 | 抬高 CPS 上限 | `config.py` 的 `target_fps`——CPS 封顶等于采集帧率，游戏 144Hz 就填 144 |
-| 实战再省 1-3ms/帧 | `config.py` 的 `visuals = False`（预览窗口整体关闭） |
+| 实战再省 1-3ms/帧 | 调参面板「运行」Tab 里关掉「实时画面」（内嵌预览，实时生效），或 `config.py` 的 `visuals = False` |
 | 摇鼠更稳 | `config.py` 的 `dll_timer_ms = 1`（默认已开） |
 | 换推理引擎 | 直接换 `--weights` 后缀：`.engine` > `.onnx`(CUDA) > `.pt` |
 | 只打一方 | `config.py` 的 `CT` / `T`（host 端过滤，所有后端生效） |

@@ -2,22 +2,64 @@
 
 import datetime
 import os
+import queue
+import threading
 import time
 
 import win32api
 import win32con
 
 import config
+from aimbot import feed
 from aimbot.targeting import class_label
-from config import aaQuitKey, capture, cpsDisplay, visuals
+from config import aaQuitKey, capture, cpsDisplay
 
 _QUIT = ord(aaQuitKey)
 _LBUTTON = win32con.VK_LBUTTON
-_VISUALS_EVERY = 2  # imshow + waitKey cost 1-3 ms; preview at half rate
+_VISUALS_EVERY = 2  # draw + publish cost ~1 ms; feed at half the CPS
 _Y_STEP = 0.02      # lock_y nudge per tap; hold repeats every _Y_REPEAT s
 _Y_REPEAT = 0.15
 _y_down = {}        # key -> held last frame
 _y_last = {}        # key -> last repeat time
+
+# Dataset saving runs off the loop thread: a PNG encode is 1-3 ms, which
+# would otherwise eat the whole per-frame budget while the trigger is held.
+_save_q = queue.Queue(maxsize=8)
+_save_thread = None
+_save_warn = 0.0
+
+
+def _save_worker():
+    from PIL import Image
+    os.makedirs('images', exist_ok=True)
+    while True:
+        # The queued array is a private copy: bettercam hands out views into
+        # its ring buffer, which the next grabs overwrite.
+        Image.fromarray(_save_q.get()).save(
+            'images/' + datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f") + '.png')
+
+
+def _save_frame(frame):
+    global _save_warn, _save_thread
+    if _save_thread is None:
+        # Daemon: a stuck disk must not keep the process alive after quit.
+        _save_thread = threading.Thread(target=_save_worker, name='save',
+                                        daemon=True)
+        _save_thread.start()
+    try:
+        _save_q.put_nowait(frame.copy())
+    except queue.Full:
+        now = time.perf_counter()
+        if now - _save_warn > 5:
+            _save_warn = now
+            print('[capture] disk behind, dropping frames')
+
+
+def _drain_saves(timeout=2.0):
+    """On quit, give queued frames a moment to hit the disk."""
+    deadline = time.perf_counter() + timeout
+    while not _save_q.empty() and time.perf_counter() < deadline:
+        time.sleep(0.02)
 
 
 def _nudge_lock_y():
@@ -43,9 +85,8 @@ def run(detector, camera, center):
     detector.infer(frame) returns the NMS tensor; detector.aim consumes it
     and returns the host rows, which visuals draws without another sync.
     """
-    cv2 = None
-    if visuals:
-        import cv2
+    cv2 = None  # imported lazily for _draw; config.visuals is read live
+                # (the tuner panel flips it mid-run)
 
     count = 0
     shown = 0
@@ -74,22 +115,18 @@ def run(detector, camera, center):
                 count = 0
                 start = now
 
-            if visuals:
+            # Embedded preview (tuner panel): draw the boxes here, then hand
+            # the finished frame to the UI's feed slot -- latest wins.
+            if config.visuals:
+                if cv2 is None:
+                    import cv2
                 shown += 1
                 if shown % _VISUALS_EVERY == 0:
                     _draw(cv2, frame, rows)
-                    cv2.imshow('Live Feed', frame)
-                    if (cv2.waitKey(1) & 0xFF) == ord('q'):
-                        break
+                    feed.publish(frame)
     finally:
         camera.stop()
-
-
-def _save_frame(frame):
-    from PIL import Image
-    os.makedirs('images', exist_ok=True)
-    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    Image.fromarray(frame).save('images/' + stamp + '.png')
+        _drain_saves()
 
 
 def _draw(cv2, frame, rows):
