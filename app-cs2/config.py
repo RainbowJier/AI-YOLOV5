@@ -68,13 +68,14 @@ lock_sen = 1.25
 # 按住左键（开火）时吸附加速 3.0/2.6×（锁得更狠）。
 # Holding the left button boosts the snap 3.0/2.6x (tighter lock).
 
-# 仅开火时吸附：开 = 只有按住左键（开火）才动鼠标，松开即停（跟踪器保持
-# 热身，再开火立刻接上）；关（默认）= CapsLock 开着就一直吸附。
-# 调参面板里也有这个开关，实时生效。
-# Aim only while firing: on = the mouse moves only while the left button
-# is held (the tracker stays warm between shots); off (default) = snap
-# whenever CapsLock is on. Also a switch in the tuner panel, live.
-aim_on_fire = False
+# 开火时是否继续吸附（CapsLock 开启时生效）：
+#   True  = 是：开火（按住左键）时照常吸附
+#   False = 否：开火时不吸附，松开左键后恢复吸附
+# 跟踪器始终保持热身，停止吸附期间不会丢失目标。调参面板里也有这个开关。
+# Keep aiming while firing (LMB held), with CapsLock on: True = keep
+# snapping; False = the mouse rests while firing and resumes after
+# release. The tracker stays warm either way. Also a panel switch.
+aim_while_firing = True
 
 # —— 移动 / Movement ——
 # v3 移动核心 = 临界阻尼弹簧（无过冲、静止目标物理上零输出）。

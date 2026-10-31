@@ -16,6 +16,14 @@ import torch
 
 _SCALE = 1.0 / 255.0
 
+# Scratch for the host path: multiply into a contiguous HWC float buffer
+# first (SIMD-friendly), then transpose-copy into the NCHW array. Writing
+# the scaled values straight through the transposed NCHW view touches a
+# new cache line per element -- measured 2.5 ms/frame (fp16) vs 1.3/0.3
+# for these two passes.
+_hwc = None
+_hwc_key = None
+
 
 class CudaUploader:
     """Reused pinned -> device upload for fixed-size frames.
@@ -30,6 +38,7 @@ class CudaUploader:
     def __init__(self, half=True):
         self.half = half
         self._pinned = None
+        self._hwc = None  # cached HWC view of the pinned buffer
         self._gpu = None
         self._copied = torch.cuda.Event()
 
@@ -37,12 +46,13 @@ class CudaUploader:
         if self._gpu is None:
             h, w, _ = frame.shape
             self._pinned = torch.empty((1, 3, h, w), dtype=torch.uint8, pin_memory=True)
+            self._hwc = self._pinned[0].permute(1, 2, 0).numpy()
             self._gpu = torch.empty(self._pinned.shape,
                                     dtype=torch.float16 if self.half else torch.float32,
                                     device='cuda')
         self._copied.synchronize()
         # HWC view into the pinned BCHW buffer; numpy writes through strides.
-        np.copyto(self._pinned[0].permute(1, 2, 0).numpy(), frame[:, :, :3])
+        np.copyto(self._hwc, frame[:, :, :3])
         self._gpu.copy_(self._pinned, non_blocking=True)
         self._copied.record()
         return self._gpu.mul_(_SCALE)
@@ -58,5 +68,11 @@ def frame_to_numpy(frame, half, out=None):
     if out is None:
         out = np.empty((1, 3, frame.shape[0], frame.shape[1]),
                        np.float16 if half else np.float32)
-    np.multiply(frame, _SCALE, out=out[0].transpose(1, 2, 0), casting='unsafe')
+    global _hwc, _hwc_key
+    key = (frame.shape[0], frame.shape[1], out.dtype)
+    if _hwc_key != key:
+        _hwc = np.empty(frame.shape, out.dtype)
+        _hwc_key = key
+    np.multiply(frame, _SCALE, out=_hwc, casting='unsafe')
+    out[0] = _hwc.transpose(2, 0, 1)
     return out

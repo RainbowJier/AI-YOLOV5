@@ -30,8 +30,8 @@ Anti-shake properties (kept from v3.0):
 - deadband hard-zeroes the error -> v decays exponentially to zero, so
   a resting target rests the mouse
 - sticky + hysteresis selection stops head/body flip-flop
-- aim_on_fire: with the toggle on, LMB gates the snap -- the mouse
-  rests until firing, the tracker stays warm between shots
+- aim_while_firing=False: LMB pauses the snap -- the mouse rests while
+  firing, the tracker stays warm, aiming resumes on release
 """
 
 import time
@@ -263,11 +263,12 @@ def aim_at(box, center, mouse, speed):
     # unaffected (_mx/_my still recorded normally).
     firing = win32api.GetKeyState(win32con.VK_LBUTTON) < 0
 
-    # 仅开火时吸附：未按左键就不动鼠标，但上面的跟踪器照常更新（保持
-    # 热身，重新开火立刻接上）。_mx/_my 清零——我们没有注入移动。
-    # Aim-on-fire: without LMB the mouse rests, while the tracker above
-    # keeps updating (warm). No moves are injected, so _mx/_my zero out.
-    if config.aim_on_fire and not firing:
+    # 开火时不吸附（aim_while_firing=False）：按住左键时鼠标静止，但上面
+    # 的跟踪器照常更新，松开后立即接上。_mx/_my 清零，不注入移动。
+    # Stop-while-firing (aim_while_firing=False): the mouse rests while LMB
+    # is held; the tracker above keeps updating, so aiming resumes at once
+    # after release. No moves are injected, so _mx/_my zero out.
+    if firing and not config.aim_while_firing:
         _mx = _my = 0.0
         _reset_spring()
         return

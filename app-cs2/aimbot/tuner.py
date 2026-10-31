@@ -2,9 +2,9 @@
 
 The UI owns its own daemon Tk thread. Configuration changes are applied live
 (with a small coalescing window while a slider is dragged), while the aim
-loop never calls Tk directly. The picker and tuner are stacked pages in one
-window, and the live feed is rendered inside the workbench rather than in a
-separate OpenCV window.
+loop never calls Tk directly. The game window itself is picked in the
+console (capture.game_selection); the tuner opens afterwards. The live feed
+is rendered inside the workbench rather than in a separate OpenCV window.
 """
 
 import math
@@ -28,8 +28,6 @@ except ImportError:  # UI is optional; the aim loop must never die for it
     ctk = None
     print('[ui] customtkinter/Pillow not installed - tuner disabled '
           '(uv pip install customtkinter Pillow)')
-
-available = ctk is not None
 
 
 class Knob(NamedTuple):
@@ -75,8 +73,8 @@ _TARGET = [
 ]
 
 _AIM_TOGGLE = Toggle(
-    'aim_on_fire', '仅开火时吸附',
-    '开：仅按住左键时吸附；关：CapsLock 常开吸附')
+    'aim_while_firing', '开火时继续吸附',
+    '是：开火（按住左键）时照常吸附；否：开火时停止，松开后恢复')
 _VISUAL_TOGGLE = Toggle(
     'visuals', '实时画面',
     '开：面板内实时显示检测画面；实战建议关闭')
@@ -194,7 +192,7 @@ def save(values=None):
             return match.group(1) + literal + match.group(3)
 
         text, count = re.subn(
-            r'^({}\s*=\s*)([^#\s]+)([ \t]*(?:#[^\r\n]*)?)$'.format(
+            r'^({}\s*=\s*)([^#\s]+)([ \t]*(?:#[^\r\n]*)?)(?=\r?$)'.format(
                 re.escape(name)),
             replace, text, count=1, flags=re.MULTILINE)
         if count == 0:
@@ -287,10 +285,6 @@ if ctk is not None:
             self.logo = ctk.CTkImage(_draw_logo(128), size=(34, 34))
             self.reset_on = ctk.CTkImage(_draw_reset(_T.AMBER, 64), size=(16, 16))
             self.reset_off = ctk.CTkImage(_draw_reset(_T.TRACK, 64), size=(16, 16))
-
-
-    _pick_event = threading.Event()
-    _pick_result = None
 
 
     class _FeedPanel:
@@ -396,6 +390,7 @@ if ctk is not None:
             self.slider = ctk.CTkSlider(
                 self.card, from_=knob.lo, to=knob.hi, height=14,
                 number_of_steps=int(round((knob.hi - knob.lo) / knob.step)),
+                scroll_step=0,  # the wheel must never nudge a value; drag only
                 fg_color=_T.TRACK, progress_color=_T.ACCENT,
                 button_color=_T.TEXT, button_hover_color='#ffffff',
                 command=self._on_slider)
@@ -600,9 +595,9 @@ if ctk is not None:
 
 
     class Tuner:
-        """Modern picker and tuning workbench in one Tk window."""
+        """The tuning workbench; the game window is picked in the console."""
 
-        def __init__(self, pick=False):
+        def __init__(self):
             ctk.set_appearance_mode('dark')
             ctk.set_default_color_theme('dark-blue')
             self.root = ctk.CTk(fg_color=_T.BG)
@@ -625,23 +620,21 @@ if ctk is not None:
             self._rendered = None
             self._feed_frames = 0
             self._feed_t0 = time.monotonic()
-            self._selected_title = '等待选择窗口'
             self._current_section = 'feel'
-            self._picker_windows = []
-            self._picker_buttons = []
-            self._picker_selected = None
-            self._page_stack = ctk.CTkFrame(self.root, fg_color='transparent')
-            self._page_stack.place(relx=0, rely=0, relwidth=1, relheight=1)
-            self._picker_page = ctk.CTkFrame(self._page_stack, fg_color='transparent')
-            self._tuner_page = ctk.CTkFrame(self._page_stack, fg_color='transparent')
-            self._picker_page.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self._current_page = 'tuner'
+            self._tuner_page = ctk.CTkFrame(self.root, fg_color='transparent')
             self._tuner_page.place(relx=0, rely=0, relwidth=1, relheight=1)
-            self._build_picker_page()
             self._build_tuner_page()
             self.root.bind_all('<Button-1>', self._defocus_entry, add='+')
             self.root.bind('<Map>', lambda _e: self._on_visibility(True), add='+')
             self.root.bind('<Unmap>', lambda _e: self._on_visibility(False), add='+')
-            self._show_page('picker' if pick else 'tuner')
+            self.root.title('Aim Tuner')
+            self.root.protocol('WM_DELETE_WINDOW', self.root.iconify)
+            self.root.update_idletasks()
+            self._set_geometry(self._tuner_page)
+            self.visuals_changed()
+            self.render()
+            self._start_timers()
 
         def _set_window_icon(self):
             try:
@@ -691,99 +684,13 @@ if ctk is not None:
                     command=self.root.iconify).pack(side='left', padx=(10, 0))
             return subtitle_label
 
-        def _build_picker_page(self):
-            page = self._picker_page
-            page.grid_columnconfigure(0, weight=1)
-            self._picker_subtitle = self._build_header(
-                page, '选择游戏窗口',
-                '选择后进入调参工作台 · 列表只显示有标题的窗口', 1)
-            search = ctk.CTkFrame(page, fg_color='transparent')
-            search.grid(row=1, column=0, sticky='ew', padx=22, pady=(0, 10))
-            search.grid_columnconfigure(0, weight=1)
-            self._picker_query = ctk.StringVar()
-            self._picker_query.trace_add('write', lambda *_: self._refresh_picker())
-            ctk.CTkEntry(
-                search, textvariable=self._picker_query, height=34,
-                placeholder_text='搜索窗口标题…', font=self.fonts.body,
-                fg_color=_T.SURFACE, border_color=_T.BORDER,
-                text_color=_T.TEXT, placeholder_text_color=_T.TEXT_MUTED,
-                corner_radius=10).grid(row=0, column=0, sticky='ew')
-            self._picker_list = ctk.CTkScrollableFrame(
-                page, width=610, height=430, corner_radius=16,
-                fg_color=_T.PANEL, border_width=1, border_color=_T.BORDER)
-            self._picker_list.grid(row=2, column=0, sticky='nsew', padx=22)
-            page.grid_rowconfigure(2, weight=1)
-            footer = ctk.CTkFrame(page, fg_color='transparent')
-            footer.grid(row=3, column=0, sticky='ew', padx=22, pady=(10, 18))
-            self._picker_count = ctk.CTkLabel(
-                footer, text='', font=self.fonts.small, text_color=_T.TEXT_MUTED,
-                anchor='w')
-            self._picker_count.pack(side='left')
-            ctk.CTkButton(
-                footer, text='刷新列表', width=92, height=32, corner_radius=10,
-                border_width=1, border_color=_T.BORDER, fg_color='transparent',
-                hover_color=_T.SURFACE_HOVER, text_color=_T.TEXT_DIM,
-                font=self.fonts.button, command=self._refresh_picker).pack(side='right')
-            self._refresh_picker()
-
-        @staticmethod
-        def _display_title(title):
-            return title if len(title) <= 64 else title[:61] + '…'
-
-        def _refresh_picker(self):
-            from aimbot import capture
-            query = self._picker_query.get().strip().lower()
-            all_windows = [w for w in capture.list_windows()
-                           if w.title and w.title != self.root.title()]
-            self._picker_windows = [w for w in all_windows
-                                    if not query or query in w.title.lower()]
-            for index, window in enumerate(self._picker_windows):
-                if index >= len(self._picker_buttons):
-                    button = ctk.CTkButton(
-                        self._picker_list, text='', anchor='w', height=42,
-                        corner_radius=11, fg_color='transparent',
-                        hover_color=_T.SURFACE_HOVER, text_color=_T.TEXT,
-                        font=self.fonts.body)
-                    self._picker_buttons.append(button)
-                button = self._picker_buttons[index]
-                selected = window is self._picker_selected
-                button.configure(
-                    text=('✓  ' if selected else '    ') + self._display_title(window.title),
-                    fg_color=_T.ACCENT_DARK if selected else 'transparent',
-                    hover_color=_T.ACCENT if selected else _T.SURFACE_HOVER,
-                    command=lambda w=window: self._choose(w))
-                button.grid(row=index, column=0, sticky='ew', padx=8, pady=(0, 6))
-            for button in self._picker_buttons[len(self._picker_windows):]:
-                button.grid_remove()
-            count = len(self._picker_windows)
-            self._picker_count.configure(
-                text='{} 个窗口'.format(count) if count else '没有匹配窗口')
-            self._picker_page.update_idletasks()
-            if getattr(self, '_current_page', None) == 'picker':
-                self._set_geometry(self._picker_page, center=True)
-
-        def _choose(self, window):
-            global _pick_result
-            self._picker_selected = window
-            self._refresh_picker()
-            _pick_result = window
-            self._selected_title = window.title
-            _pick_event.set()
-            self._show_page('tuner')
-
-        def _cancel_pick(self):
-            global _pick_result
-            _pick_result = None
-            _pick_event.set()
-            self.root.withdraw()
-
         def _build_tuner_page(self):
             page = self._tuner_page
             page.grid_columnconfigure(0, weight=0)
             page.grid_columnconfigure(1, weight=1)
             page.grid_rowconfigure(1, weight=1)
-            self._tuner_subtitle = self._build_header(
-                page, '瞄准工作台', '实时生效 · 等待选择窗口', 2)
+            self._build_header(page, '瞄准工作台',
+                               '拖动即时生效 · 保存后写入 config.py', 2)
 
             self._feed_panel = _FeedPanel(self, page)
             self._feed_panel.card.grid(row=1, column=0, sticky='nsew',
@@ -809,6 +716,11 @@ if ctk is not None:
             self._control_scroll = ctk.CTkScrollableFrame(
                 controls, width=510, height=500, corner_radius=12,
                 fg_color='transparent')
+            # No wheel scrolling anywhere in this panel (mis-touch while
+            # gaming): the card list scrolls only via the scrollbar drag.
+            # CTkScrollableFrame binds <MouseWheel> app-wide in its
+            # constructor, so detach it right after creation.
+            self._control_scroll.unbind_all('<MouseWheel>')
             self._control_scroll.grid(row=2, column=0, sticky='nsew',
                                       padx=10, pady=(0, 10))
             self._control_scroll.grid_columnconfigure(0, weight=1)
@@ -881,7 +793,7 @@ if ctk is not None:
                          text_color=_T.TEXT, anchor='w').pack(
                 anchor='w', padx=14, pady=(12, 5))
             ctk.CTkLabel(
-                info, text='Caps Lock  开/关瞄准\n↑ / ↓  调整锁定垂直位\nP  退出程序',
+                info, text='Caps Lock  开/关瞄准\n↑ / ↓  调整锁定垂直位\nP  退出程序\n鼠标滚轮已禁用：调值请拖滑条或输入数值',
                 font=self.fonts.small, text_color=_T.TEXT_MUTED,
                 anchor='w', justify='left').pack(anchor='w', padx=14, pady=(0, 12))
 
@@ -912,55 +824,16 @@ if ctk is not None:
                 canvas.yview_moveto(0)
             self.render()
 
-        def _show_page(self, page_name):
-            self._current_page = page_name
-            page = self._picker_page if page_name == 'picker' else self._tuner_page
-            # Only dance withdraw/deiconify once the window is on screen.
-            # Before the first mapping CTk tracks withdraw() in
-            # _withdraw_called_before_window_exists and then SKIPS its own
-            # deiconify in mainloop() -- leaving the window hidden forever
-            # and pick_window() blocked. Unmapped: just let CTk show it.
-            mapped = self.root.winfo_viewable()
-            if mapped:
-                self.root.withdraw()
-            page.tkraise()
-            self.root.title('选择游戏窗口 — Aim Tuner' if page_name == 'picker'
-                            else 'Aim Tuner')
-            self.root.protocol('WM_DELETE_WINDOW', self._cancel_pick if page_name == 'picker'
-                               else self.root.iconify)
-            self.root.update_idletasks()
-            self._set_geometry(page, center=page_name == 'picker')
-            self.root.deiconify()
-            if page_name == 'tuner':
-                self._update_header_title()
-                self.visuals_changed()
-                self.render()
-                self._start_timers()
-
-        def _update_header_title(self):
-            # Fixed-width subtitle: changing the selected title never changes
-            # the requested width of the workbench.
-            if hasattr(self, '_tuner_subtitle'):
-                title = self._selected_title
-                if len(title) > 52:
-                    title = title[:49] + '…'
-                self._tuner_subtitle.configure(text='实时生效 · ' + title)
-
-        def _set_geometry(self, page, center=False):
+        def _set_geometry(self, page):
             page.update_idletasks()
-            width = 760 if center else 1120
-            height = 620 if center else 720
+            width, height = 1120, 720
             scale = max(1.0, self.root.winfo_fpixels('1i') / 96.0)
             screen_w = int(self.root.winfo_screenwidth() / scale)
             screen_h = int(self.root.winfo_screenheight() / scale)
             width = min(width, max(320, screen_w - 24))
             height = min(height, max(320, screen_h - 72))
-            if center:
-                x = max(12, (screen_w - width) // 2)
-                y = max(36, (screen_h - height) // 3)
-            else:
-                x = max(12, screen_w - width - 24)
-                y = max(36, min(48, screen_h - height - 24))
+            x = max(12, screen_w - width - 24)
+            y = max(36, min(48, screen_h - height - 24))
             self.root.geometry('{}x{}+{}+{}'.format(width, height, x, y))
 
         def _start_timers(self):
@@ -978,9 +851,6 @@ if ctk is not None:
         def _on_visibility(self, visible):
             if visible and getattr(self, '_current_page', None) == 'tuner':
                 self._start_timers()
-
-        def _build_picker_page_dummy(self):
-            pass
 
         def queue_value(self, row, value):
             row._pending = value
@@ -1147,40 +1017,24 @@ if ctk is not None:
             self.root.mainloop()
 
 
-    def _make_tuner(pick):
-        return Tuner(pick)
-
-
     _thread = None
 
 
-    def pick_window():
-        global _pick_result
-        _pick_result = None
-        _pick_event.clear()
-        start(pick=True)
-        _pick_event.wait()
-        return _pick_result
-
-
-    def start(pick=False):
+    def start():
+        """Open the tuner workbench in a daemon thread (idempotent)."""
         global _thread
         if _thread is not None and _thread.is_alive():
             return
-        _thread = threading.Thread(target=_run, args=(pick,), daemon=True)
+        _thread = threading.Thread(target=_run, daemon=True)
         _thread.start()
 
 
-    def _run(pick):
+    def _run():
         try:
-            _make_tuner(pick).run()
+            Tuner().run()
         except Exception as exc:
             print('[ui] tuner failed: {}'.format(exc))
-            _pick_event.set()
 
 else:
-    def start(pick=False):
+    def start():
         pass
-
-    def pick_window():
-        return None

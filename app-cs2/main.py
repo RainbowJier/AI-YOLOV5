@@ -15,7 +15,7 @@ os.chdir(_ROOT)
 
 from aimbot import tuner
 from aimbot.backends import load_detector
-from aimbot.capture import game_selection, open_window
+from aimbot.capture import game_selection
 from aimbot.driver import create_driver
 from aimbot.loop import run
 from config import mouse_driver
@@ -28,15 +28,7 @@ def main():
     parser.add_argument('--weights', default=DEFAULT_WEIGHTS, help='.pt, .onnx or .engine model')
     args = parser.parse_args()
 
-    # Window picker: the tuner UI opens on its picker page and main blocks
-    # until a window is chosen; console picker when the UI can't run.
-    if tuner.available:
-        window = tuner.pick_window()
-        if window is None:
-            return  # picker closed -- user aborted
-        selected = open_window(window)
-    else:
-        selected = game_selection()
+    selected = game_selection()
     if selected is None:
         return
     camera, c_width, c_height = selected
@@ -46,6 +38,7 @@ def main():
         raise SystemExit('mouse driver "{}" failed to init; see the error above'.format(mouse_driver))
     try:
         detector = load_detector(args.weights, mouse)
+        tuner.start()  # runtime tuning workbench; sliders apply instantly
         run(detector, camera, (c_width, c_height))
     finally:
         close = getattr(mouse, 'close', None)

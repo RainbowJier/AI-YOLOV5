@@ -94,6 +94,7 @@ class Engine:
         self.addrs = OrderedDict((n, b.ptr) for n, b in bindings.items())
         self.input = next(n for n in bindings if n not in outputs)
         self._static_set = False
+        self._input_ptr = None
 
     def __call__(self, im):
         """Enqueue the engine on torch's current stream, without syncing.
@@ -108,14 +109,19 @@ class Engine:
         if tuple(im.shape) != expected:
             raise RuntimeError('engine expects {}, got {}'.format(expected, tuple(im.shape)))
         if hasattr(self.context, 'set_tensor_address'):
-            # TRT 8.5+/10/11 tensor API: addresses persist on the context.
+            # TRT 8.5+/10/11 tensor API: addresses persist on the context,
+            # so rebind only when the caller's tensor actually moved.
+            ptr = int(im.data_ptr())
             if not self._static_set:
-                self.addrs[self.input] = int(im.data_ptr())
-                for name, ptr in self.addrs.items():
-                    self.context.set_tensor_address(name, ptr)
+                self._input_ptr = ptr
+                self.addrs[self.input] = ptr
+                for name, p in self.addrs.items():
+                    self.context.set_tensor_address(name, p)
                 self._static_set = True
-            else:
-                self.context.set_tensor_address(self.input, int(im.data_ptr()))
+            elif ptr != self._input_ptr:
+                self._input_ptr = ptr
+                self.addrs[self.input] = ptr
+                self.context.set_tensor_address(self.input, ptr)
             self.context.execute_async_v3(torch.cuda.current_stream().cuda_stream)
         else:
             # TRT 8.x binding API: pass the address list on every call.

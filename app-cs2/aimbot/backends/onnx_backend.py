@@ -74,6 +74,7 @@ class OnnxDetector(Detector):
             self.uploader.half = self.half
         self.io = self.session.io_binding() if self.cuda else None
         self._out = None
+        self._in_key = None  # (ptr, shape, dtype) of the bound input
         print("模型的tensor：", meta.type)
         print("模型的shape：", meta.shape)
 
@@ -104,8 +105,13 @@ class OnnxDetector(Detector):
             self._out = torch.empty(meta.shape, dtype=im.dtype, device=im.device)
             self.io.bind_output(meta.name, 'cuda', 0, _ort_type(im.dtype),
                                 tuple(self._out.shape), self._out.data_ptr())
-        self.io.bind_input(self.input_name, 'cuda', 0, _ort_type(im.dtype),
-                           tuple(im.shape), im.data_ptr())
+        # The uploader hands over the same tensor every frame; the binding
+        # persists in the IoBinding, so only rebind when it actually moved.
+        key = (im.data_ptr(), tuple(im.shape), im.dtype)
+        if key != self._in_key:
+            self._in_key = key
+            self.io.bind_input(self.input_name, 'cuda', 0, _ort_type(im.dtype),
+                               tuple(im.shape), im.data_ptr())
         self.session.run_with_iobinding(self.io)
         if not self.shared_stream:
             # ORT ran on its own stream; the NMS below reads its output.
