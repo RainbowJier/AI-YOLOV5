@@ -46,26 +46,15 @@ class Toggle(NamedTuple):
     hint: str
 
 
-_FEEL = [
-    Knob('move_rate', '吸附速度', '×', 1.0, 20.0, 0.5,
-         '弹簧刚度：大=快狠，小=柔（推荐 4-12）'),
-    Knob('track_tau', '目标平滑', 's', 0.005, 0.080, 0.001,
-         '框 EMA 秒数：大=稳，小=紧跟（0.015-0.050）'),
-    Knob('deadband_px', '死区半径', 'px', 0.0, 8.0, 0.5,
-         '死区内完全不动：锁定后微晃就加大（1-4）'),
-    Knob('lead_min_speed', '引导噪声门', 'px/s', 0.0, 120.0, 5.0,
-         '目标速度低于此值引导=0：静止目标仍晃就加大'),
-    Knob('lead_fade_radius', '引导衰减', 'px', 0.0, 40.0, 1.0,
-         '接近准星时引导逐渐关闭（8-16）'),
-]
-
 _TARGET = [
-    Knob('max_move_speed', '移动限速', 'px/s', 600.0, 9600.0, 100.0,
-         '最大 px/s：大幅甩动太猛就调小'),
-    Knob('lock_y', '锁定垂直位', '', 0.0, 1.0, 0.01,
-         '0=框顶 0.2=头 0.5=中心 1=框底（运行中 ↑/↓ 也能调）'),
+    Knob('lock_smooth', '平滑系数', '', 1.0, 20.0, 1.0,
+         '原版算法：越大越柔、跟得越慢，最低 1（默认 4）'),
+    Knob('lock_y', '瞄点高低', '', 0.0, 1.0, 0.01,
+         '数小=往上瞄，数大=往下瞄：0=头顶 0.2≈头 0.5≈胸腹 0.8≈腿（↑/↓ 也能调）'),
     Knob('aim_range', '触发半径', 'px', 20.0, 200.0, 5.0,
          '目标距准星超过此 px 不瞄'),
+    Knob('aim_falloff', '吸附范围', 'px', 0.0, 200.0, 5.0,
+         '0=关（全程同强度）；开=越近吸得越狠、到边界衰减为 0（≤触发半径）'),
     Knob('lock_sen', '灵敏度换算', '×', 0.5, 3.0, 0.05,
          '像素→dots：填游戏灵敏度倍数'),
     Knob('confidence', '检测置信度', '', 0.1, 0.95, 0.05,
@@ -84,22 +73,28 @@ _BODY_TOGGLE = Toggle(
 _HEAD_TOGGLE = Toggle(
     'aim_head', '识别头部',
     '开：头部框参与瞄准；只打头就关掉「识别身体」')
+_CT_TOGGLE = Toggle(
+    'CT', '识别 CT',
+    '开：瞄 CT 方；和「识别 T」都开（或都关）= 双方都瞄')
+_T_TOGGLE = Toggle(
+    'T', '识别 T',
+    '开：瞄 T 方；只打对面就关掉另一队的开关')
 
 _SECTIONS = [
-    ('feel', '手感', 'FEEL', _FEEL, []),
-    ('target', '目标', 'TARGET', _TARGET, [_BODY_TOGGLE, _HEAD_TOGGLE]),
+    ('target', '目标', 'TARGET', _TARGET,
+     [_CT_TOGGLE, _T_TOGGLE, _BODY_TOGGLE, _HEAD_TOGGLE]),
     ('runtime', '运行', 'RUNTIME', [], [_AIM_TOGGLE, _VISUAL_TOGGLE]),
 ]
 
 # Kept as a compatibility-friendly aggregate for code/tests that inspect the
 # old metadata shape. The UI itself uses _SECTIONS so it can show tabs.
 _GROUPS = [
-    ('手感', 'FEEL', _FEEL, []),
     ('目标', 'TARGET', _TARGET, [_AIM_TOGGLE]),
 ]
 _STRIP_TOGGLES = [_VISUAL_TOGGLE]
 KNOBS = {k.name: k for _, _, knobs, _ in _GROUPS for k in knobs}
-TOGGLES = [_AIM_TOGGLE, _VISUAL_TOGGLE, _BODY_TOGGLE, _HEAD_TOGGLE]
+TOGGLES = [_AIM_TOGGLE, _VISUAL_TOGGLE, _CT_TOGGLE, _T_TOGGLE,
+           _BODY_TOGGLE, _HEAD_TOGGLE]
 
 
 class _Theme:
@@ -157,9 +152,8 @@ def refresh():
     import aimbot.targeting as tgt
     tgt._INV_SEN = 1.0 / config.lock_sen
     tgt._AIM_RANGE_SQ = config.aim_range * config.aim_range
-    tgt._LEAD_FADE_R = config.lead_fade_radius
-    tgt._LEAD_MIN = config.lead_min_speed
-    tgt._DEADBAND = config.deadband_px
+    tgt._FALLOFF = getattr(config, 'aim_falloff', 0)
+    tgt._INV_SMOOTH = 1.0 / config.lock_smooth
     tgt.apply_class_filter()
     for name in ('tensorrt_backend', 'onnx_backend', 'torch_backend'):
         module = sys.modules.get('aimbot.backends.' + name)
@@ -579,7 +573,7 @@ if ctk is not None:
         def apply(self, value):
             self.value = bool(value)
             setattr(config, self.toggle.name, self.value)
-            if self.toggle.name in ('aim_body', 'aim_head'):
+            if self.toggle.name in ('aim_body', 'aim_head', 'CT', 'T'):
                 refresh()   # class filter is baked at import; recompute it
             self._show()
             if self.toggle.name == 'visuals':
@@ -629,7 +623,7 @@ if ctk is not None:
             self._rendered = None
             self._feed_frames = 0
             self._feed_t0 = time.monotonic()
-            self._current_section = 'feel'
+            self._current_section = 'target'
             self._current_page = 'tuner'
             self._tuner_page = ctk.CTkFrame(self.root, fg_color='transparent')
             self._tuner_page.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -792,7 +786,7 @@ if ctk is not None:
                 if key == 'runtime':
                     self._add_runtime_info(section, row_index)
                 section.grid(row=0, column=0, sticky='ew')
-            self._show_section('feel')
+            self._show_section('target')
 
         def _add_runtime_info(self, section, row):
             info = ctk.CTkFrame(section, corner_radius=12, fg_color=_T.CARD,

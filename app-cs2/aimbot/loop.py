@@ -75,7 +75,7 @@ def _nudge_lock_y():
         _y_down[key] = down
     if step:
         config.lock_y = min(1.0, max(0.0, config.lock_y + _Y_STEP * step))
-        print('[aim] lock_y = {:.2f}   (0=框顶  0.2=头  0.5=中心  1=框底)'.format(
+        print('[aim] lock_y = {:.2f}   (小=往上瞄 大=往下瞄; 0=头顶 0.2≈头 0.5≈胸腹)'.format(
             config.lock_y))
 
 

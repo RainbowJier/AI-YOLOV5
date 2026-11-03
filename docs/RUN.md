@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 | 按键 | 作用 |
 | --- | --- |
 | **Caps Lock** | 开/关瞄准。启动时是关的 |
-| **↑ / ↓** | 运行中实时调节锁定垂直位置 `lock_y`（每次 0.02，终端打印当前值；0=框顶 0.2=头 0.5=中心 1=框底），调好把值写回 config.py |
+| **↑ / ↓** | 运行中实时调节瞄点高低 `lock_y`（每次 0.02，终端打印当前值；数小=往上瞄、数大=往下瞄），调好把值写回 config.py |
 | **P**（`aaQuitKey`） | 退出 |
 
 瞄准逻辑：选离准星最近的框，距离不超过 `aim_range` 才动；垂直锁定位置由 `lock_y` 决定（↑/↓ 热键可调）；按住左键（开火）时吸附加速。详见 `app-cs2/config.py` 的注释和根 README。
@@ -52,10 +52,10 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 | 实战再省 1-3ms/帧 | 调参面板「运行」Tab 里关掉「实时画面」（内嵌预览，实时生效），或 `config.py` 的 `visuals = False` |
 | 摇鼠更稳 | `config.py` 的 `dll_timer_ms = 1`（默认已开） |
 | 换推理引擎 | 直接换 `--weights` 后缀：`.engine` > `.onnx`(CUDA) > `.pt` |
-| 只打一方 | `config.py` 的 `CT` / `T`（host 端过滤，所有后端生效） |
+| 只打一方 | 调参面板「目标」页的「识别 CT」「识别 T」开关（实时生效），或 `config.py` 的 `CT` / `T` |
 | 只打头 / 只打身体 | 调参面板「目标」页的「识别身体」「识别头部」开关（实时生效），或 `config.py` 的 `aim_body` / `aim_head` |
-| 锁定更快/更柔 | `config.py` 的 `move_rate`（有效值 = move_rate × 2.6/s；默认 8 柔，25 快） |
-| 锁定点高低 | 运行中按 ↑/↓，或改 `lock_y`（0=框顶 0.2=头 0.5=中心 1=框底） |
+| 锁定更快/更柔 | 调参面板「目标」页的**平滑系数**（`lock_smooth`，越小越狠、越大越柔，最低 1；默认 4） |
+| 瞄点高低 | 运行中按 ↑/↓，或改 `lock_y`（0=头顶 0.2≈头 0.5≈胸腹 0.8≈腿） |
 
 诊断看终端每秒打印的 CPS：**CPS ≈ `target_fps` 说明瓶颈在采集供给而不是推理**，此时继续优化推理没有意义，调大 `target_fps` 才有用。
 

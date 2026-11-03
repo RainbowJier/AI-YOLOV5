@@ -16,7 +16,7 @@ screenShotHeight = 320
 # 想要更高 CPS / 更新鲜的画面，提到游戏的刷新率（如 144）。
 # Capture pacing -- the CPS ceiling. Raise it to the game's refresh rate
 # for fresher frames and a higher ceiling (costs some capture CPU).
-target_fps = 60
+target_fps = 50
 
 # ============ 推理后端 / Inference backend ============
 
@@ -43,7 +43,7 @@ iou = 0.45
 
 # 0=CT身体 1=CT头 2=T身体 3=T头。两队都开（或都关）= 所有类别都参与竞争。
 # 组合示例：只打 T 就 CT = False, T = True。
-CT = True
+CT = False
 T = True
 
 # 只识别头部 / 身体（在队伍过滤之上再筛部位；调参面板「目标」页有开关，
@@ -51,13 +51,21 @@ T = True
 # Head/body part filter on top of the team filter (live switches in the
 # tuner panel): both on = everything; one on = that part only;
 # both off = nothing gets aimed at.
-aim_body = True
+aim_body = False
 aim_head = True
 
 # ============ 瞄准 / Aim ============
 
 # 目标中心离准星超过这个像素数就不瞄 / max box distance to the crosshair, px
-aim_range = 70
+aim_range = 40
+
+# 吸附范围（px）：0 = 关（全程同强度）；>0 = 吸附强度随距离线性衰减，
+# 越近吸得越狠、到范围边界衰减为 0（之外不瞄）。建议不大于触发半径。
+# 面板「目标」页可实时调。
+# Aim falloff radius (px): 0 = off (uniform strength); >0 = the snap
+# scales down linearly with distance, reaching zero at the edge.
+# Keep it within aim_range. Live slider in the tuner panel.
+aim_falloff = 5
 
 # 选目标时优先离准星最近的框；关掉则永远取置信度最高的第一行。
 # Prefer the closest box to the crosshair; off = first (top-score) row.
@@ -66,67 +74,28 @@ centerOfScreen = True
 # 锁定点在目标框内的垂直位置：0=框顶 · 0.2=头部 · 0.5=中心 · 1=框底。
 # 运行中按 ↑/↓ 实时调节（每次 0.02，终端打印当前值），调好把值写回这里。
 # Vertical lock point inside the target box (0=top, 1=bottom).
-lock_y = 0.20
+lock_y = 0.05
+
+# 鼠标平滑系数（原版算法）：越大越柔、跟得越慢，最低 1.0。调参面板「目标」页可实时调。
+# Move smoothing, higher = softer/slower, min 1.0 (original algorithm).
+lock_smooth = 6
 
 # 灵敏度换算：输出鼠标 dots = 像素位移 ÷ lock_sen。桌面试用 1；
 # 游戏里填游戏灵敏度相对桌面的倍数（如 1.25），填对后收敛手感与桌面一致。
 # Mouse dots = px move / lock_sen (game sensitivity scale).
 lock_sen = 1.25
 
-# 按住左键（开火）时吸附加速 3.0/2.6×（锁得更狠）。
-# Holding the left button boosts the snap 3.0/2.6x (tighter lock).
+# 按住左键（开火）时：瞄点落到框中心，吸附加速 3.0/2.6×（原版行为）。
+# Left button held: aim at the box centre, 3.0/2.6x faster (original).
 
 # 开火时是否继续吸附（CapsLock 开启时生效）：
 #   True  = 是：开火（按住左键）时照常吸附
 #   False = 否：开火时不吸附，松开左键后恢复吸附
-# 跟踪器始终保持热身，停止吸附期间不会丢失目标。调参面板里也有这个开关。
+# 调参面板里也有这个开关。
 # Keep aiming while firing (LMB held), with CapsLock on: True = keep
 # snapping; False = the mouse rests while firing and resumes after
-# release. The tracker stays warm either way. Also a panel switch.
+# release. Also a panel switch.
 aim_while_firing = True
-
-# —— 移动 / Movement ——
-# v3 移动核心 = 临界阻尼弹簧（无过冲、静止目标物理上零输出）。
-# Movement core v3 = critically damped spring (no overshoot; a standing
-# target produces exactly zero output).
-
-# 吸附快慢（× speed = 弹簧刚度 /s）：越大锁定越快，越小越柔。
-# 推荐 4-12。晃动大就调小，跟不紧就调大。
-# Snap stiffness (× speed = spring rate /s): higher locks faster.
-# Try 4-12. Lower it if it shakes, raise it if it lags.
-move_rate = 11
-
-# 平滑：检测框 EMA 时间常数（秒），越大越稳，越小跟得越紧。
-# 推荐范围：0.015-0.050。紧跟感用 0.015-0.025，柔和感用 0.035-0.050
-# Smoothing: EMA time constant; higher=steady (less jitter), lower=responsive.
-# Recommended: 0.015-0.025 for tight, 0.035-0.050 for smooth.
-track_tau = 0.0190
-
-# 移动速度上限（px/s）：防止大幅修正时瞬移。调大可更激进
-# Speed cap (px/s) to prevent teleport on huge corrections. Raise for aggressive.
-max_move_speed = 4800.0
-
-# 速度估计平滑（秒）：内部常数。不需要调但暴露出来了，默认 0.060
-# Velocity EMA time constant. Internal; exposed but no need to touch. Default 0.060.
-velocity_tau = 0.060
-
-# —— 手感微调 / Feel Fine-tuning ——
-
-# 吸附死区（px）：准星距锁定点小于此值时完全不动鼠标（硬保持）。
-# 晃动仍大 → 加大到 2.5-4。
-# Deadband (px): inside this radius the crosshair is held exactly still.
-# Still shaking -> raise to 2.5-4.
-deadband_px = 1
-
-# 引导衰减半径（px）：速度引导在接近准星时逐渐关闭（噪声保护）
-# Lead fade radius: velocity lead prediction fades near crosshair to reduce jitter.
-lead_fade_radius = 12.0
-
-# 引导噪声门（px/s）：目标速度估计低于此值时引导严格为 0（站立目标零前馈）。
-# 静止目标仍微晃 → 加大到 50-80。
-# Lead noise gate (px/s): below this estimated speed the lead is exactly
-# zero. Standing target still shakes -> raise to 50-80.
-lead_min_speed = 30.0
 
 # ============ 鼠标驱动 / Mouse driver ============
 

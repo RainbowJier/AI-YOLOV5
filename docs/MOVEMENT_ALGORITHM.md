@@ -1,95 +1,41 @@
-# Movement Algorithm (v3.1: error-space damped spring)
+# 移动算法（原版：反正切阻尼）
 
-## Why v3.1
+2026-10-31 起，移动核心回退到原版的单步算法；v2.0/v3.x 的弹簧实现
+保留在 git 历史里（`45cbd0e`、`6789c68`），需要时可恢复。
 
-v3.0 simulated a crosshair position and chased it with a spring. The
-simulation assumed injected dots move the view by exactly the predicted
-pixels — open loop. Any mismatch (wrong `lock_sen`, a view that ignores
-input, a dead driver) let the *simulated* crosshair arrive while the
-real one stood still → output decayed to zero → "mouse stopped moving".
+## 核心公式
 
-v3.1 removes the position entirely. One state variable per axis: a
-spring **velocity** driven by the freshly OBSERVED error every frame:
+每帧完全无状态——没有 EMA、没有速度引导、没有死区、没有弹簧：
 
 ```
-v'  = (v + dt * omega^2 * e) / (1 + 2*omega*dt)   critically damped
-e   = observed error, deadband-gated              (0 inside deadband_px)
-out = v * dt, v soft-capped                        (max_move_speed)
+dx, dy  = 准星 − 锁定点像素坐标            (锁定点 = 框内 lock_y 位置)
+k       = speed ÷ lock_smooth ÷ lock_sen
+mouse   = (−k · atan(dx / W) · W,  −k · atan(dy / H) · W)
 ```
 
-Closed loop by construction: if the view does not respond, the error
-never shrinks, v saturates against the cap, and the mouse keeps pushing.
-A sensitivity mismatch only slows convergence — it can never stall.
+- `speed`：后端常数（TensorRT 2.6）。
+- `lock_smooth`：平滑系数，越大越柔、跟得越慢，最低 1.0（默认 4）。
+  面板「目标」页可实时调。
+- `lock_sen`：像素 → 鼠标 dots 的换算（游戏灵敏度倍数）。
+- `atan` 阻尼：误差大时接近线性、接近目标时自然减速，无过冲。
 
-## Why v3 (the original rewrite)
+## 门控（按顺序）
 
-v2 mixed two terms every frame:
+1. CapsLock 关 → 不动，并清掉粘滞目标记忆。
+2. 目标中心距准星超过 `aim_range` → 不瞄。
+3. `aim_while_firing = False` 且按住左键 → 不动，松开恢复。
+4. 按住左键（开火）→ 瞄点落到**框中心**（忽略 lock_y），速度 ×3.0/2.6。
 
-```
-move = error_fraction * chase + world_velocity * dt
-                                ^^^ bypasses the deadband
-```
+## 选目标
 
-The world-velocity term bypassed the deadband. Near lock, detector noise
-(±1-2 px) differentiated into a fake velocity (dividing by dt multiplies
-it by ~60) and was injected straight into the mouse every frame — the
-constant shake. v2's `track_tau = 0.019` at 60 fps only filtered ~41% of
-that noise, so the aim point itself wobbled.
+- 队伍过滤（`CT`/`T`）× 部位过滤（`aim_body`/`aim_head`），
+  `apply_class_filter()` 实时重算并推送后端。
+- 离准星最近的框（近距并列时大框优先）；`centerOfScreen = False`
+  则永远取置信度最高的第一行。
+- 粘滞 + 35% 滞回：防止头框/身框来回跳。
 
-## Anti-shake structure (v3.1)
+## 上一版（v3.1 弹簧）为何被回退
 
-- **EMA** (`track_tau`) absorbs detector box jitter before anything moves.
-- **World velocity** (observed delta + our own injected move) drives a
-  lead that is **noise-gated**: below `lead_min_speed` px/s the lead is
-  *exactly zero* — a standing target gets no feed-forward at all.
-- **Radial deadband** (`deadband_px`): inside it the error is zero → the
-  spring velocity decays exponentially → output is exactly 0.
-- **Critically damped spring**: no overshoot on any input; the internal
-  velocity state decays to zero, so nothing in the loop amplifies noise.
-- **tanh soft cap** (`max_move_speed`): huge corrections glide, not jump.
-- **Sticky selection + 35% hysteresis**: no head/body flip-flop between
-  overlapping boxes.
-- **Firing (LMB)**: spring stiffness boosted 3.0/2.6x (tighter lock).
-
-## Movement flow per frame
-
-1. `pick()` → team filter (numpy, host).
-2. `closest()` → sticky + hysteresis target selection.
-3. `_update_track()` → EMA box + world velocity + jump detection.
-4. `aim_at()` → gates (CapsLock, LMB, range) → `_aim_point()` (lead gated
-   by `_lead_gate()`, faded by `lead_fade_radius`, offset by `lock_y`) →
-   radial deadband → spring velocity step → soft cap → `mouse.move()`.
-
-## Config knobs (app-cs2/config.py)
-
-| knob | meaning | shake? | tune |
-| --- | --- | --- | --- |
-| `move_rate` | spring stiffness (`× speed`) | lower = calmer | 4–12 |
-| `track_tau` | box EMA smoothing | higher = calmer | 0.015–0.05 |
-| `deadband_px` | hard-hold radius | higher = calmer | 1–4 |
-| `lead_min_speed` | lead noise gate | higher = calmer | 30–80 |
-| `lead_fade_radius` | lead fade near crosshair | lower = calmer | 8–16 |
-| `max_move_speed` | soft cap | — | 2400–7200 |
-| `lock_sen` | px → mouse dots | — | game sens scale |
-| `lock_y` | vertical lock point | — | 0=top 0.2=head 1=bottom |
-
-Still shaking? Raise `deadband_px` → 2.5–4 first, then `lead_min_speed`
-→ 50–80. Lags behind strafing? Raise `move_rate`.
-
-## Simulation tests
-
-`scripts/sim_movement.py` runs the real state machine against a
-closed-loop view model (the box moves as the view rotates; a `gain`
-factor can break the loop — 0 = dead view, 0.5 = sensitivity mismatch):
-
-- stationary + ±0.8px noise → 0.43 px residual, 0.0000 dots/frame jitter
-- step input → converges, 1.0 px overshoot
-- 30 px/s strafe → 3.4 px steady-state error
-- **dead view (gain=0)** → still pushing 13.8 dots/frame after 4 s
-  (v3.0 regression: output must never decay when the view ignores input)
-- **half sensitivity (gain=0.5)** → still converges to 0.72 px
-  (v3.0 regression: wrong lock_sen must not stall)
-- LMB held → zero output; release → instant resume
-- overlapping head/body boxes → one stable pick (hysteresis)
-- CapsLock off → full state reset
-
+实测手感差（用户反馈），且引入了帧间隔未限幅导致的瞬移问题。
+它的防抖设计（EMA、噪声门、死区）随回退一并移除；若开火时抖动，
+优先调大 `lock_smooth`。
