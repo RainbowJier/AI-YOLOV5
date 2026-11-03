@@ -1,0 +1,70 @@
+"""PyTorch backend. Loads a .pt checkpoint directly, without torch.hub.
+
+The checkpoint carries its own network definition, which lives in train/.
+That tree is only put on the path while the file is unpickled.
+"""
+
+import pathlib
+import sys
+
+import numpy as np
+import torch
+
+from aimbot.backends.base import Detector
+from aimbot.nms import nms
+from aimbot.preprocess import CudaUploader, frame_to_numpy
+from config import confidence, iou
+
+# Checkpoints saved on Linux store PosixPath; make them loadable on Windows.
+pathlib.PosixPath = pathlib.WindowsPath
+
+_TRAIN = pathlib.Path(__file__).resolve().parents[3] / 'train'
+
+
+def _load(weights):
+    """Unpickle a .pt checkpoint straight into a model.
+
+    Works for both YOLOv5 and YOLOv11 checkpoints. A v11 checkpoint pickles
+    ultralytics classes, so the `ultralytics` package (train/requirements.txt)
+    must be installed; its eval forward returns (y, x) with y shaped
+    (1, 4+nc, anchors), which aimbot.nms detects by shape like any export.
+    """
+    if str(_TRAIN) not in sys.path:
+        sys.path.insert(0, str(_TRAIN))
+    ckpt = torch.load(weights, map_location='cpu', weights_only=False)
+    model = ckpt.get('ema') or ckpt['model']
+    return model.float().fuse().eval() if hasattr(model, 'fuse') else model.float().eval()
+
+
+class TorchDetector(Detector):
+    def __init__(self, weights, mouse, speed=2.6):
+        super().__init__(mouse, speed)
+        self.cuda = torch.cuda.is_available()
+        self._feed = None
+        if not self.cuda:
+            # Same oversubscription story as the ORT backend: 18 threads
+            # measured 46 ms on this CPU, 8 threads 38 ms.
+            torch.set_num_threads(8)
+        else:
+            # Static shapes: cudnn autotunes the conv algos once, up front.
+            torch.backends.cudnn.benchmark = True
+        self.model = _load(weights)
+        if self.cuda:
+            self.model = self.model.half().cuda()
+            self.uploader = CudaUploader(half=True)
+
+    def infer(self, frame):
+        # inference_mode all the way through the NMS: the in-place ops on
+        # the model output would be rejected outside the mode.
+        with torch.inference_mode():
+            if self.cuda:
+                pred = self.model(self.uploader.upload(frame))
+            else:
+                if self._feed is None:
+                    h, w, _ = frame.shape
+                    self._feed = np.empty((1, 3, h, w), np.float32)
+                im = frame_to_numpy(frame, half=False, out=self._feed)
+                pred = self.model(torch.from_numpy(im))
+            if isinstance(pred, (list, tuple)):
+                pred = pred[0]
+            return nms(pred, confidence, iou, max_det=10)

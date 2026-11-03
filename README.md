@@ -9,8 +9,10 @@ app-cs2/     运行时。唯一入口 main.py（后端按权重后缀自动选�
   aimbot/    采集 / 鼠标驱动 / 上传 / NMS / 选目标 / 主循环 / TensorRT 引擎加载 / 推理后端 / 运行时调参面板
   native/    鼠标驱动：mouse_driver.c/.dll（默认）、logitech.driver.dll（可选）
   weights/   已导出的模型（10w 引擎 + onnx，本机构建，换显卡需重导 engine）
+app-sjz/     三角洲行动运行时，同构复制自 app-cs2：256×256 截取、v8s 模型（训练集过滤队友）
+  weights/   sjzs.onnx/.engine（YOLOv8s·256·0=身 1=头）；备选 6AY_v26m（e2e）、三角洲模型、delta_force_v4
 train/       YOLOv5 v7.0 完整训练栈（train.py / val.py / export.py）；v11 用 ultralytics 训，export_yolo11.py 导出
-docs/        RUN 启动 · TRAINING 训练 · EXPORT 格式转换 · DRIVER 鼠标驱动
+docs/        RUN 启动 · TRAINING 训练 · DRIVER 鼠标驱动
 scripts/     setup.ps1 一键环境
 ```
 
@@ -34,7 +36,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 | 按键 | 作用 |
 | --- | --- |
 | **Caps Lock** | 开 / 关瞄准（启动时是关的） |
-| **↑ / ↓** | 运行中实时调节锁定垂直位置 `lock_y`（每次 0.02，调参面板同步显示） |
+| **↑ / ↓** | 运行中实时调节瞄点高低 `lock_y`（每次 0.02；数小=往上瞄、数大=往下瞄，面板同步显示） |
 | **P** | 退出（`aaQuitKey`） |
 
 ## 运行时调参面板
@@ -42,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 终端选完窗口、模型加载后弹出的暗色工作台（CustomTkinter，独立线程，不占主循环时间）：
 
 - **左侧 Live Feed**：画面固定比例嵌入面板，实时显示画好检测框的捕获帧；状态有 `LIVE` / `NO SIGNAL` / `PAUSED`，不再创建独立 OpenCV 窗口。
-- **右侧三组 Tab**：`手感`（五个滑条）、`目标`（五个滑条 + 识别身体/识别头部开关）、`运行`（开火时继续吸附、实时画面和快捷键说明），一次只显示一组，页面更短、更容易定位。
+- **右侧两组 Tab**：`目标`（五个滑条 + 识别 CT/识别 T/识别身体/识别头部开关）、`运行`（开火时继续吸附、实时画面和快捷键说明），一次只显示一组，页面更短、更容易定位。
 - 滑条拖动保留即时视觉反馈，实际配置更新合并到约 24ms；数值框支持 Enter 提交、Escape 取消，非法输入显示字段级错误提示。
 - 改过的参数数值变琥珀色并亮起 ↺，可单项还原或「全部还原」；保存放在后台线程，完成状态不会卡住面板。
 - 底部固定操作栏显示未保存数量；「保存到 config.py」只改数值行，注释与排版原样保留。置顶开关默认开启，150% DPI 下窗口仍保持在屏幕内。
@@ -63,6 +65,24 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 | `app-cs2/weights/10w-v5-320-16.onnx` | ONNX FP16 |
 
 YOLOv5 和 YOLOv11 的输出布局不同（v5 带 objectness，v8/11 不带），运行时按张量形状自动识别，不需要任何开关。
+
+## 三角洲行动（app-sjz）
+
+`app-sjz/` 与 `app-cs2/` 同构（采集 / 后端 / 调参面板 / 鼠标驱动完全一致），差异集中在其 `config.py` 与权重：
+
+- **当前默认权重**：`sjzs`（YOLOv8s · 256×256 · 类别 `0=身体 1=头`，训练集过滤队友只报敌人）
+- **备选权重**（仍在 weights/，换用需同步改 `screenShotWidth/Height` 并重转 engine）：`6AY_v26m_1020`（YOLO26m · 320/416/640 · **端到端自带 NMS**，`aimbot/nms.py` 按输出形状自动识别）、`三角洲模型`（YOLOv5s·320·单类）、`delta_force_v4`（YOLOv8n·640，来自 [YOLO_DeltaForce](https://github.com/advent259141/YOLO_DeltaForce)）
+- **无阵营开关**：模型不分队，「目标」页只有 识别身体 / 识别头部 两个开关
+
+```powershell
+# 跑起来（默认 app-sjz\weights\sjzs.engine，TensorRT fp32 强类型）
+.\.venv\Scripts\python.exe app-sjz\main.py
+
+# 备选权重的重导出：pt → onnx(fp32/fp16) → engine（换显卡 / 换 imgsz 时）
+.\.venv\Scripts\python.exe app-sjz\export.py
+```
+
+导出说明：TensorRT 11 删掉了 `BuilderFlag.FP16`，`export.py` 走「fp16 ONNX + STRONGLY_TYPED 网络」实现 FP16，不依赖 nvidia-modelopt（ultralytics 的 FP16 导出路径强制装它）。engine 绑定本机 GPU，换卡需重转；后端按 engine 实际输入 dtype 自动匹配上传精度（fp32 engine 喂 fp16 会静默产出垃圾框，已加 dtype 校验）。
 
 ## 视频检测（离线）
 
@@ -98,11 +118,11 @@ bettercam 采集
 
 ## 瞄准行为
 
-- 类别：`0` CT 身体 · `1` CT 头 · `2` T 身体 · `3` T 头。`config.CT` / `config.T` 在 host 端过滤队伍（都开或都关 = 全类别竞争）；「识别身体」「识别头部」（面板「目标」页开关，实时生效）在其上再筛部位——只开一个就只瞄该部位，两个都关则不瞄任何目标。
+- 类别：`0` CT 身体 · `1` CT 头 · `2` T 身体 · `3` T 头。「识别 CT」「识别 T」（面板开关，实时生效）选队伍，两队都开或都关 = 全部；「识别身体」「识别头部」在其上再筛部位——只开一个就只瞄该部位，两个都关则不瞄任何目标。
 - 选离准星最近的框，距离不超过 `aim_range`（默认 70 px）才动；关掉 `centerOfScreen` 则永远取置信度最高的一行。
 - **按住左键（开火）时吸附加速** 3.0/2.6×（锁得更狠，压枪更稳）。可选 `aim_while_firing`（面板开关，CapsLock 开启时生效）：是 = 开火时照常吸附（默认）；否 = 按住左键时鼠标静止，松开后立即恢复吸附，跟踪器全程保持热身。
-- 锁定垂直位置 `lock_y`（0=框顶 · 0.2=头 · 0.5=中心 · 1=框底），**运行中按 ↑/↓ 实时调节**（终端打印当前值）。
-- 移动算法（v3.1 误差空间弹簧）：检测框先过 EMA（`track_tau`）滤抖动；世界速度前馈带噪声门（`lead_min_speed`，静止目标引导严格为 0）+ 死区硬保持（`deadband_px`）+ **误差空间临界阻尼弹簧**（`move_rate` 定刚度；每帧只积分实测误差，不模拟位置——闭环于真实画面，灵敏度偏差只会变慢不会卡死）+ tanh 软限速。静止目标物理上零晃动。`lock_sen` 是像素→dots 换算。调优见 [docs/MOVEMENT_ALGORITHM.md](docs/MOVEMENT_ALGORITHM.md)。
+- 瞄点高低 `lock_y`：数小往上瞄、数大往下瞄（0=头顶 · 0.2≈头 · 0.5≈胸腹 · 0.8≈腿），**运行中按 ↑/↓ 实时调节**（终端打印当前值）。
+- 移动算法（原版：反正切阻尼）：每帧一步比例移动 `move = -(speed ÷ lock_smooth ÷ lock_sen) × atan(误差) `，无状态、无滤波；`lock_smooth` 越大越柔（面板可实时调），`lock_sen` 是像素→dots 换算；按住左键时瞄点落到框中心并加速 3.0/2.6×。详见 [docs/MOVEMENT_ALGORITHM.md](docs/MOVEMENT_ALGORITHM.md)。
 
 全部配置集中在 `app-cs2/config.py`，按「截取 → 推理 → 类别 → 瞄准 → 鼠标 → 界面」分节，每个旋钮带双语注释，改完重跑即生效。
 

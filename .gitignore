@@ -23,3 +23,8 @@ train/**/*.pt
 # both DLLs under app-cs2/native/ are vendored prebuilt and stay tracked;
 # rebuild mouse_driver.dll by hand (cl line in docs/DRIVER.md) only after
 # changing mouse_driver.c
+
+# app-sjz engines are per-GPU TensorRT builds; the 6AY one exceeds
+# GitHub's 100MB file cap and every engine rebuilds from its tracked
+# onnx (see README/app-sjz/export.py) -- keep them local only
+app-sjz/weights/*.engine
