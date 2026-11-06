@@ -15,14 +15,15 @@ capture -> inference -> target -> aim -> mouse -> UI.
 # 截取游戏窗口中心的正方形区域。必须和模型输入一致：sjzs 是 256。
 # Square region captured around the window center; must match the
 # model input (sjzs = 256x256).
-screenShotWidth = 256
-screenShotHeight = 256
+screenShotWidth = 320
+screenShotHeight = 320
 
 # 采集节流帧率，CPS 的上限由它决定（推理再快也不会超过采集供给）。
-# 想要更高 CPS / 更新鲜的画面，提到游戏的刷新率（如 144）。
-# Capture pacing -- the CPS ceiling. Raise it to the game's refresh rate
-# for fresher frames and a higher ceiling (costs some capture CPU).
-target_fps = 40
+# 和游戏同机时建议 30：GPU 占空比从 ~14% 降到 ~10%，给游戏让出算力
+# 时间片；单开（不卡游戏）可以回到 40-50。
+# Capture pacing -- the CPS ceiling. 30 when gaming on the same GPU
+# (cuts inference duty cycle); 40-50 fine when the game is not running.
+target_fps = 60
 
 # ============ 推理后端 / Inference backend ============
 
@@ -79,7 +80,7 @@ lock_y = 0.05
 
 # 鼠标平滑系数（原版算法）：越大越柔、跟得越慢，最低 1.0。调参面板「目标」页可实时调。
 # Move smoothing, higher = softer/slower, min 1.0 (original algorithm).
-lock_smooth = 3
+lock_smooth = 2
 
 # 灵敏度换算：输出鼠标 dots = 像素位移 ÷ lock_sen。桌面试用 1；
 # 游戏里填游戏灵敏度相对桌面的倍数，填对后收敛手感与桌面一致。

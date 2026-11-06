@@ -109,9 +109,9 @@ def run(detector, camera, center):
             count += 1
             now = time.perf_counter()
             if now - start > 1:
-                if cpsDisplay:
-                    print("CPS: {}  aim: {}".format(
-                        count, "ON" if win32api.GetKeyState(win32con.VK_CAPITAL) else "off"))
+                # if cpsDisplay:
+                    # print("CPS: {}  aim: {}".format(
+                    #     count, "ON" if win32api.GetKeyState(win32con.VK_CAPITAL) else "off"))
                 count = 0
                 start = now
 

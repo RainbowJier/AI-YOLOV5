@@ -19,6 +19,16 @@ if _APP not in sys.path:
     sys.path.insert(0, _APP)
 os.chdir(_ROOT)
 
+# Below-normal CPU priority: when the game and the bot share the machine,
+# the game's threads win every scheduling fight. GPU duty is untouched,
+# but capture/inference orchestration stops stealing game frame time.
+try:
+    import ctypes
+    ctypes.windll.kernel32.SetPriorityClass(
+        ctypes.windll.kernel32.GetCurrentProcess(), 0x00004000)  # BELOW_NORMAL
+except Exception:
+    pass
+
 from aimbot import tuner
 from aimbot.backends import load_detector
 from aimbot.capture import game_selection
@@ -26,7 +36,7 @@ from aimbot.driver import create_driver
 from aimbot.loop import run
 from config import mouse_driver
 
-DEFAULT_WEIGHTS = 'app-sjz/weights/sjzs.engine'
+DEFAULT_WEIGHTS = 'app-sjz/weights/6AY_v26m_1020_320x320.engine'
 
 
 def main():
